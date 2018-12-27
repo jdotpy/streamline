@@ -24,13 +24,13 @@ class AsyncExecutor():
         self.source = source
         self.target = target
         self.extract = extract
-        self.loop = asyncio.get_event_loop()
         self.executor = executor
-        self.input_queue = asyncio.Queue(loop=self.loop)
-        self.output_queue = asyncio.Queue(loop=self.loop)
+        self.input_queue = asyncio.Queue()
+        self.output_queue = asyncio.Queue()
         self.show_progress = show_progress
         self.worker_count = workers or self.DEFAULT_WORKERS
         self.stacktraces = stacktraces
+        self.loop = asyncio.get_event_loop()
 
         # State data
         self.entry_count = 0
@@ -69,7 +69,7 @@ class AsyncExecutor():
         for i in range(self.worker_count):
             worker = self.loop.create_task(self._worker())
             workers.append(worker)
-            asyncio.ensure_future(worker, loop=self.loop)
+            asyncio.ensure_future(worker, )
 
         #self.loop.run_until_complete(self._execute_jobs())
 
@@ -80,31 +80,27 @@ class AsyncExecutor():
         # Wait and show progress
         while True:
             self._show_progress()
-            await asyncio.wait(workers, timeout=0.1, loop=self.loop)
+            await asyncio.wait(workers, timeout=0.1, )
             if self._is_complete():
                 break
             else:
                 self._show_progress()
         self._show_progress(newline=True)
 
-    async def await_next_result(self):
-        while True:
-            try:
-                result_pair = await asyncio.wait_for(self.output_queue.get(), timeout=.1, loop=self.loop)
-                return result_pair
-            except asyncio.TimeoutError:
-                self._show_progress()
-
-    def stream_results(self):
+    async def stream_results(self):
         while not self._is_complete() or self.output_queue.qsize():
-            result = self.loop.run_until_complete(self.await_next_result())
-            yield result
+            try:
+                result_pair = await asyncio.wait_for(self.output_queue.get(), timeout=.1, )
+            except asyncio.TimeoutError:
+                continue
+            yield result_pair
+            self._show_progress()
         self._show_progress(newline=True)
 
     async def _worker(self):
         while True:
             try:
-                entry = await asyncio.wait_for(self.input_queue.get(), timeout=.1, loop=self.loop)
+                entry = await asyncio.wait_for(self.input_queue.get(), timeout=.1, )
             except asyncio.TimeoutError:
                 if self.input_queue.qsize() == 0 and self.all_enqueued:
                     return
@@ -127,11 +123,11 @@ class AsyncExecutor():
             self.input_queue.task_done()
             self.active_count -= 1
 
-def noop_executor(source):
+async def noop_executor(source):
     for entry in source:
         yield entry, entry
 
-def crank(Streamer, executor=None, headers=None, progress=False, extract=None, worker_count=None, stacktraces=True):
+async def crank(Streamer, executor=None, headers=None, progress=False, extract=None, worker_count=None, stacktraces=True):
     if extract is None:
         extractor = lambda x: x
     else:
@@ -153,7 +149,7 @@ def crank(Streamer, executor=None, headers=None, progress=False, extract=None, w
         else:
             result_stream = noop_executor(streamer.read())
             
-        for entry, result in result_stream:
+        async for entry, result in result_stream:
             extracted_result = extractor(result)
 
             if headers:

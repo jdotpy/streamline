@@ -3,9 +3,7 @@ from distutils.core import setup
 setup(
     name = 'crank',
     scripts=['bin/crank'],
-    packages=[
-        'crank',
-    ],
+    packages=['crank'],
     version = '0.1.0',
     description = 'CLI tool for doing async tasks and transformations',
     author = 'KJ',

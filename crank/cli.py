@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import logging
 import os
 
@@ -62,11 +63,13 @@ def crank_command():
     Streamer = load_streamer(args.streamer)
     executor = load_executor(args.executor, extra_args)
     streamer = Streamer(args.input, args.output)
-    crank(
+    loop = asyncio.get_event_loop()
+    task = asyncio.ensure_future(crank(
         streamer,
         executor=executor,
         headers=args.headers,
         progress=args.progress,
         extract=args.extract,
         stacktraces=args.stacktraces,
-    )
+    ))
+    loop.run_until_complete(task)
