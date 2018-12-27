@@ -1,0 +1,52 @@
+import re
+
+INDEX_ATTR_PATTERN = r'(\[\*\])|(\[\d\])'
+class IndexSelector:
+    def __init__(self, index):
+        self.index = index
+
+    def __str__(self):
+        return 'IndexSelector({})'.format(self.index)
+
+def _truthy(entries):
+    return [entry for entry in entries if entry]
+
+def parse_selectors(path):
+    if path is None:
+        return []
+    selectors = []
+    dotted_chunks = path.split('.')
+    for section in dotted_chunks:
+        chunks = _truthy(re.split(INDEX_ATTR_PATTERN, section))
+        for chunk in chunks:
+            if chunk.startswith('[') and chunk.endswith(']'):
+                selectors.append(IndexSelector(chunk[1:-1]))
+            else:
+                selectors.append(chunk)
+    return selectors
+
+def extract_path(data, path=None):
+    if isinstance(path, list):
+        selectors = path
+    else:
+        selectors = parse_selectors(path)
+
+    result = data
+    for i, selector in enumerate(selectors):
+        if isinstance(selector, IndexSelector):
+            if selector.index == '*':
+                return [extract_path(entry, selectors[i + 1:]) for entry in result]
+            else:
+                try:
+                    result = result[int(selector.index)]
+                except IndexError as e:
+                    result = None
+        elif selector == '*':
+            values = result.values()
+            return [extract_path(value, selectors[i + 1:]) for value in values]
+        else:
+            if isinstance(result, dict):
+                result = result.get(selector, None)
+            else:
+                result = getattr(result, selector, None)
+    return result
