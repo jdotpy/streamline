@@ -71,5 +71,6 @@ def crank_command():
         progress=args.progress,
         extract=args.extract,
         stacktraces=args.stacktraces,
+        worker_count=args.workers,
     ))
     loop.run_until_complete(task)

@@ -69,7 +69,7 @@ class AsyncExecutor():
         for i in range(self.worker_count):
             worker = self.loop.create_task(self._worker())
             workers.append(worker)
-            asyncio.ensure_future(worker, )
+            asyncio.ensure_future(worker)
 
         #self.loop.run_until_complete(self._execute_jobs())
 
@@ -80,7 +80,7 @@ class AsyncExecutor():
         # Wait and show progress
         while True:
             self._show_progress()
-            await asyncio.wait(workers, timeout=0.1, )
+            await asyncio.wait(workers, timeout=0.1)
             if self._is_complete():
                 break
             else:
@@ -90,7 +90,7 @@ class AsyncExecutor():
     async def stream_results(self):
         while not self._is_complete() or self.output_queue.qsize():
             try:
-                result_pair = await asyncio.wait_for(self.output_queue.get(), timeout=.1, )
+                result_pair = await asyncio.wait_for(self.output_queue.get(), timeout=.1)
             except asyncio.TimeoutError:
                 continue
             yield result_pair
@@ -100,7 +100,7 @@ class AsyncExecutor():
     async def _worker(self):
         while True:
             try:
-                entry = await asyncio.wait_for(self.input_queue.get(), timeout=.1, )
+                entry = await asyncio.wait_for(self.input_queue.get(), timeout=.1)
             except asyncio.TimeoutError:
                 if self.input_queue.qsize() == 0 and self.all_enqueued:
                     return

@@ -9,7 +9,7 @@ def _get_file_io(name, write=False):
     elif name == '-' and not write:
         return sys.stdin
     else:
-        return open(name, 'w' if write else 'r')
+        return open(name, 'w' if write else 'r', 1)
 
 
 class UninitializedStreamerError(Exception):
@@ -72,6 +72,8 @@ class LineStreamer():
             raise UninitializedStreamerError()
         else:
             self.target.write(result)
+            if self.force_flush and hasattr(self.target, 'flush'):
+                self.target.flush()
         
 STREAMERS = {
     'line': LineStreamer,
