@@ -1,9 +1,10 @@
 from importlib import import_module
 import sys
+import os
 
 def import_obj(path):
     current_dir = os.path.abspath('.')
-    if current_dir not in os.path:
+    if current_dir not in sys.path:
         sys.path.append(current_dir)
     module_path, handler_name = path.rsplit('.', 1)
     module = import_module(module_path)
