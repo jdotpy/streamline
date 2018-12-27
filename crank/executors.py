@@ -1,4 +1,6 @@
-from .utils import import_obj
+import argparse
+
+from .utils import import_obj, inject_module
 
 async def _get_client_keys():
     client = await asyncssh.connect_agent()
@@ -7,7 +9,7 @@ async def _get_client_keys():
 
 class ScpHandler():
     def __init__(self, source=None, target=None):
-        import asyncssh
+        inject_module('asyncssh', globals())
         self.source = source
         self.target = target
         self.client_keys = None
@@ -45,7 +47,6 @@ class ScpHandler():
 
 class ShellHandler():
     def __init__(self, command=None):
-        import asyncssh
         self.command = command
 
     @classmethod
@@ -75,7 +76,7 @@ class SSHHandler():
     NO_SUDO = object()
 
     def __init__(self, command=None, continue_on_error=True, as_user=None):
-        import asyncssh
+        inject_module('asyncssh', globals())
         self.command = command
         self.continue_on_error = continue_on_error
         self.client_keys = None
@@ -143,9 +144,9 @@ class SSHHandler():
 
 class HTTPHandler():
     def __init__(self, url=None, method=None):
-        import requests
         self.url = url
         self.method = method
+        inject_module('requests', globals())
 
     @classmethod
     def parse_args(cls, parser):
@@ -174,7 +175,7 @@ class HTTPHandler():
             result['response'] = response.text
         return result
 
-HANDLERS = {
+EXECUTORS = {
     'http': HTTPHandler,
     'ssh': SSHHandler,
     'shell': ShellHandler,
@@ -184,10 +185,10 @@ HANDLERS = {
 def load_executor(path, options):
     if path is None:
         return None
-    elif '.' in args.module:
-        executor = import_obj(path)
+    elif '.' in path:
+        Executor = import_obj(path)
     else:
-        executor = EXECUTORS.get(path)
+        Executor = EXECUTORS.get(path)
     executor_parser = argparse.ArgumentParser()
     if Executor and hasattr(Executor, 'parse_args'):
         Executor.parse_args(executor_parser)

@@ -20,16 +20,7 @@ class AsyncExecutor():
     """
     DEFAULT_WORKERS = 5
 
-    def __init__(
-                self,
-                source,
-                target,
-                executor,
-                show_progress=True,
-                stacktraces=False,
-                extract=None,
-                workers=DEFAULT_WORKERS
-            ):
+    def __init__(self, source, target, executor, show_progress=True, stacktraces=False, extract=None, workers=DEFAULT_WORKERS):
         self.source = source
         self.target = target
         self.extract = extract
@@ -38,7 +29,7 @@ class AsyncExecutor():
         self.input_queue = asyncio.Queue(loop=self.loop)
         self.output_queue = asyncio.Queue(loop=self.loop)
         self.show_progress = show_progress
-        self.worker_count = workers
+        self.worker_count = workers or self.DEFAULT_WORKERS
         self.stacktraces = stacktraces
 
         # State data
@@ -56,7 +47,7 @@ class AsyncExecutor():
              total=self.entry_count,
              percent_done=int(self.complete_count / self.entry_count * 100),
              running=self.active_count,
-             pending=self.queue.qsize(),
+             pending=self.input_queue.qsize(),
          ))
          if newline:
              # Finish with a newline
@@ -76,12 +67,14 @@ class AsyncExecutor():
         # Start workers
         workers = []
         for i in range(self.worker_count):
-            workers.append(self.loop.create_task(self._worker()))
+            worker = self.loop.create_task(self._worker())
+            workers.append(worker)
+            asyncio.ensure_future(worker, loop=self.loop)
 
-        self.loop.run_until_complete(self._execute_jobs())
+        #self.loop.run_until_complete(self._execute_jobs())
 
     def _is_complete(self):
-        return len(self.results) == self.entry_count
+        return self.complete_count == self.entry_count
 
     async def _execute_jobs(self):
         # Wait and show progress
@@ -93,29 +86,27 @@ class AsyncExecutor():
             else:
                 self._show_progress()
         self._show_progress(newline=True)
-        if not self.stream_output:
-        return self.results
 
-    def _output_entry(self, result_entry):
-        entry, result = result_entry
-        if self.extract:
-            result = extract_path(result, self.extract)
+    async def await_next_result(self):
+        while True:
+            try:
+                result_pair = await asyncio.wait_for(self.output_queue.get(), timeout=.1, loop=self.loop)
+                return result_pair
+            except asyncio.TimeoutError:
+                self._show_progress()
 
-        if isinstance(result, (dict, list)):
-            output_entry = json.dumps(result)
-        else:
-            output_entry = str(result).strip()
-        output_entry = output_entry + '\n'
-        if self.show_headers:
-            output_entry = f'{entry}: {output_entry}'
-        self.target.write(output_entry)
+    def stream_results(self):
+        while not self._is_complete() or self.output_queue.qsize():
+            result = self.loop.run_until_complete(self.await_next_result())
+            yield result
+        self._show_progress(newline=True)
 
     async def _worker(self):
         while True:
             try:
                 entry = await asyncio.wait_for(self.input_queue.get(), timeout=.1, loop=self.loop)
             except asyncio.TimeoutError:
-                if self.queue.qsize() == 0 and self.all_enqueued:
+                if self.input_queue.qsize() == 0 and self.all_enqueued:
                     return
                 else:
                     continue
@@ -132,11 +123,15 @@ class AsyncExecutor():
                     result = '{}'.format(traceback.format_exc())
                 else:
                     result = str(e)
-            self._save_result(result_entry)
+            self._save_result(entry, result)
             self.input_queue.task_done()
             self.active_count -= 1
 
-def crank(Streamer, executor=None, headers=None, progress=False, extract=None, worker_count=None):
+def noop_executor(source):
+    for entry in source:
+        yield entry, entry
+
+def crank(Streamer, executor=None, headers=None, progress=False, extract=None, worker_count=None, stacktraces=True):
     if extract is None:
         extractor = lambda x: x
     else:
@@ -149,22 +144,20 @@ def crank(Streamer, executor=None, headers=None, progress=False, extract=None, w
                 streamer.read(),
                 streamer.write,
                 executor,
-                show_headers=args.headers,
-                extract=args.extract,
-                workers=args.workers,
-                stacktraces=args.stacktraces,
+                show_progress=progress,
+                stacktraces=stacktraces,
                 workers=worker_count,
             )
             ae.start()
             result_stream = ae.stream_results()
         else:
-            result_stream = streamer.read()
+            result_stream = noop_executor(streamer.read())
             
         for entry, result in result_stream:
             extracted_result = extractor(result)
 
             if headers:
-                if not isinstance(extracted_result, 'str'):
+                if not isinstance(extracted_result, str):
                     extracted_result = json.dumps(entry)
                 extracted_result = '{}: {}'.format(entry, extracted_result)
-            streamer.write(entry, extracted_result)
+            streamer.write(extracted_result)

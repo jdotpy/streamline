@@ -1,4 +1,5 @@
 import json
+import sys
 
 from .utils import import_obj
 
@@ -34,8 +35,8 @@ class LineStreamer():
         return self.read()
 
     def __enter__(self):
-        self.source = _get_file_io(self.source)
-        self.target = _get_file_io(target, write=True)
+        self.source = _get_file_io(self.source_name)
+        self.target = _get_file_io(self.target_name, write=True)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -55,11 +56,14 @@ class LineStreamer():
         if self.target is None:
             raise UninitializedStreamerError()
         
-        if not isinstance(entry, 'str'):
+        if not isinstance(entry, str):
             entry = json.dumps(entry)
 
-        if not self.first_written:
-            entry = DELIMITER + entry
+        if self.first_written:
+            entry = self.DELIMITER + entry
+        else:
+            self.first_written = True
+        self.target.write(entry)
         
 STREAMERS = {
     'line': LineStreamer,
@@ -68,8 +72,8 @@ STREAMERS = {
 def load_streamer(path):
     if path is None:
         return None
-    elif '.' in args.module:
-        return import_obj(path)
+    elif '.' in path:
+        Streamer = import_obj(path)
     else:
-        return STREAMERS.get(path)
-
+        Streamer = STREAMERS.get(path)
+    return Streamer

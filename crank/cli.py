@@ -26,7 +26,7 @@ def crank_command():
     cmd_parser.add_argument(
         '-s', '--streamer',
         help='Execution Module',
-        default=None,
+        default='line',
     )
     cmd_parser.add_argument(
         '-w', '--workers',
@@ -61,10 +61,11 @@ def crank_command():
 
     Streamer = load_streamer(args.streamer)
     executor = load_executor(args.executor, extra_args)
+    streamer = Streamer(args.input, args.output)
     crank(
-        Streamer,
+        streamer,
         executor=executor,
-        headers=args.show_headers,
+        headers=args.headers,
         progress=args.progress,
         extract=args.extract,
         stacktraces=args.stacktraces,

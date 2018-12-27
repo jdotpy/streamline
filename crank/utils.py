@@ -1,7 +1,7 @@
 from importlib import import_module
 import sys
 
-def _import_obj(path):
+def import_obj(path):
     current_dir = os.path.abspath('.')
     if current_dir not in os.path:
         sys.path.append(current_dir)
@@ -12,3 +12,11 @@ def _import_obj(path):
     handler_obj = getattr(module, handler_name)
     return handler_obj
 
+def inject_module(module_name, namespace):
+    try:
+        module = import_module(module_name)
+    except ModuleNotFoundError as e:
+        print('This plugin requires module: "{}"\nTry "pip install {}"'.format(module_name, module_name))
+        sys.exit(6)
+    sys.modules[module_name] = module
+    namespace[module_name] = module
