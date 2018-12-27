@@ -160,4 +160,4 @@ def crank(Streamer, executor=None, headers=None, progress=False, extract=None, w
                 if not isinstance(extracted_result, str):
                     extracted_result = json.dumps(entry)
                 extracted_result = '{}: {}'.format(entry, extracted_result)
-            streamer.write(extracted_result)
+            streamer.write(entry, extracted_result)
