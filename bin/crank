@@ -1,6 +1,0 @@
-#!/usr/bin/env python3
-
-from crank.cli import crank_command
-
-if __name__ == '__main__':
-    crank_command()

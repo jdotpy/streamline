@@ -5,12 +5,12 @@ import os
 
 from .executors import EXECUTORS, load_executor
 from .streamers import STREAMERS, load_streamer
-from .core import crank
+from .core import streamline
 
 logger = logging.getLogger(__file__)
 
-def crank_command():
-    cmd_parser = argparse.ArgumentParser(prog='crank')
+def streamline_command():
+    cmd_parser = argparse.ArgumentParser(prog='streamline')
     cmd_parser.add_argument('--input', help='Set source (Default stdin)', default='-')
     cmd_parser.add_argument('--output', help='Set target of output (Default stdout)', default='-')
     cmd_parser.add_argument(
@@ -64,7 +64,7 @@ def crank_command():
     executor = load_executor(args.executor, extra_args)
     streamer = Streamer(args.input, args.output)
     loop = asyncio.get_event_loop()
-    task = asyncio.ensure_future(crank(
+    task = asyncio.ensure_future(streamline(
         streamer,
         executor=executor,
         headers=args.headers,

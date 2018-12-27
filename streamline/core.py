@@ -127,7 +127,7 @@ async def noop_executor(source):
     for entry in source:
         yield entry, entry
 
-async def crank(Streamer, executor=None, headers=None, progress=False, extract=None, worker_count=None, stacktraces=True):
+async def streamline(Streamer, executor=None, headers=None, progress=False, extract=None, worker_count=None, stacktraces=True):
     if extract is None:
         extractor = lambda x: x
     else:

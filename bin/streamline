@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+
+from streamline.cli import streamline_command
+
+if __name__ == '__main__':
+    streamline_command()
