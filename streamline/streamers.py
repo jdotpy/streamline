@@ -32,31 +32,23 @@ class LineStreamer():
         self.target = None
         self.target_template = None
 
-    def __iter__(self):
+    def __aiter__(self):
         return self.read()
 
-    def __enter__(self):
+    async def read(self):
         self.source = _get_file_io(self.source_name)
+        for line in self.source:
+            yield line.rstrip('\n')
+
+        if hasattr(self.source, 'close'):
+            self.source.close()
+
+    async def write(self, entry, result):
         if '{entry}' in self.target_name:
             self.target_template = self.target_name
         else:
             self.target = _get_file_io(self.target_name, write=True)
-        return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        if hasattr(self.source, 'close'):
-            self.source.close()
-        if self.target and hasattr(self.target, 'close'):
-            self.target.close()
-
-    def read(self):
-        if self.source is None:
-            raise UninitializedStreamerError()
-
-        for line in self.source:
-            yield line.rstrip('\n')
-
-    def write(self, entry, result):
         if not isinstance(result, str):
             result = json.dumps(result)
 
@@ -74,6 +66,9 @@ class LineStreamer():
             self.target.write(result)
             if self.force_flush and hasattr(self.target, 'flush'):
                 self.target.flush()
+
+        if self.target and hasattr(self.target, 'close'):
+            self.target.close()
         
 STREAMERS = {
     'line': LineStreamer,

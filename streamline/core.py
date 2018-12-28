@@ -20,9 +20,8 @@ class AsyncExecutor():
     """
     DEFAULT_WORKERS = 5
 
-    def __init__(self, source, target, executor, show_progress=True, stacktraces=False, extract=None, workers=DEFAULT_WORKERS):
+    def __init__(self, source, executor, show_progress=True, stacktraces=False, extract=None, workers=DEFAULT_WORKERS):
         self.source = source
-        self.target = target
         self.extract = extract
         self.executor = executor
         self.input_queue = asyncio.Queue()
@@ -127,33 +126,42 @@ async def noop_executor(source):
     for entry in source:
         yield entry, entry
 
-async def streamline(Streamer, executor=None, headers=None, progress=False, extract=None, worker_count=None, stacktraces=True):
+async def streamline(streamer, executor=None, headers=None, progress=False, transform=None extract=None, worker_count=None, stacktraces=True):
     if extract is None:
         extractor = lambda x: x
     else:
         selectors = parse_selectors(extract)
         extractor = lambda x: extract_path(x, selectors)
 
-    with Streamer as streamer:
-        if executor:
-            ae = AsyncExecutor(
-                streamer.read(),
-                streamer.write,
-                executor,
-                show_progress=progress,
-                stacktraces=stacktraces,
-                workers=worker_count,
-            )
-            ae.start()
-            result_stream = ae.stream_results()
-        else:
-            result_stream = noop_executor(streamer.read())
-            
-        async for entry, result in result_stream:
-            extracted_result = extractor(result)
+    if executor:
+        ae = AsyncExecutor(
+            streamer.read(),
+            executor,
+            show_progress=progress,
+            stacktraces=stacktraces,
+            workers=worker_count,
+        )
+        ae.start()
+        result_stream = ae.stream_results()
+    else:
+        result_stream = noop_executor(streamer.read())
+    if transform:
+        result_stream = transform(result_stream)
+        
+    async for result_pair in result_stream:
+        extracted_result = extractor(result)
 
-            if headers:
-                if not isinstance(extracted_result, str):
-                    extracted_result = json.dumps(entry)
-                extracted_result = '{}: {}'.format(entry, extracted_result)
-            streamer.write(entry, extracted_result)
+        if headers:
+            if not isinstance(extracted_result, str):
+                extracted_result = json.dumps(entry)
+            extracted_result = '{}: {}'.format(entry, extracted_result)
+        streamer.write(entry, extracted_result)
+
+async def pipe(source, *generators, consumer=None, source=None):
+    pipe = source
+    for generator in generators:
+        pipe = generator(pipe)
+
+    if consumer is None:
+        async for item in pipe:
+            pass
