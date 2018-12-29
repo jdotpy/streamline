@@ -21,7 +21,7 @@ class BaseStreamer():
 
     async def stream(self, source):
         async for entry in source:
-            await self.handle(entry.value)
+            result = await self.handle(entry.value)
             entry.value = result
             yield entry
 
@@ -29,25 +29,30 @@ class BaseStreamer():
         pass
 
 class PyExecTransform(BaseStreamer):
-    def __init__(self, text=None, expression=True, show_exceptions=False):
+    def __init__(self, code=None, expression=True, show_exceptions=False):
         self.show_exceptions = show_exceptions
+        self.expression = expression
         self.runner = eval if expression else exec
         try:
-            self.code = compile(transform_py, '<string::transform>', self.runner.__name__)
+            self.code = compile(code, '<string::transform>', self.runner.__name__)
         except Exception as e:
             traceback.print_exc()
             sys.exit(1)
 
     async def stream(self, source):
-        async for i, entry in enumerate(source):
+        async for entry in source:
             scope = {'value': entry.value, 'input': entry.original_value, 'i': entry.index, 'index': entry.index}
             try:
-                if expression:
+                if self.expression:
                     entry.value = self.runner(self.code, globals(), scope)
                 else:
                     self.runner(self.code, globals(), scope)
-                    entry.value = scope.get('result', None) or entry.value
+                    if 'result' in scope:
+                        entry.value = scope.get('result', None) 
+                    else:
+                        entry.value = scope.get('result')
             except Exception as e:
+                print(e)
                 if self.show_exceptions:
                     entry.exception(e)
                     traceback.print_exc()
@@ -56,16 +61,16 @@ class PyExecTransform(BaseStreamer):
             yield entry
 
 class PyExecFilter(BaseStreamer):
-    def __init__(self, text=None, show_exceptions=False):
+    def __init__(self, code=None, show_exceptions=False):
         self.show_exceptions = show_exceptions
         try:
-            self.code = compile(text, '<string::filter>', 'eval')
+            self.code = compile(code, '<string::filter>', 'eval')
         except Exception as e:
             traceback.print_exc()
             sys.exit(1)
 
     async def stream(self, source):
-        async for i, entry in enumerate(source):
+        async for entry in source:
             scope = {'value': entry.value, 'input': entry.original_value, 'i': entry.index, 'index': entry.index}
             try:
                 keep = eval(self.code, globals(), scope)
@@ -78,10 +83,10 @@ class PyExecFilter(BaseStreamer):
 
 class ExtractionStreamer(BaseStreamer):
     def initialize(self):
-        self.extractor = Extractor(self.options['path'])
+        self.extractor = Extractor(self.options['selector'])
 
     async def handle(self, value):
-        yield self.extractor.extract(result)
+        return self.extractor.extract(value)
 
 class AsyncExecutor():
     """
@@ -93,21 +98,20 @@ class AsyncExecutor():
     """
     DEFAULT_WORKERS = 5
 
-    def __init__(self, executor=None, show_progress=True, stacktraces=False, extract=None, workers=DEFAULT_WORKERS):
-        self.extract = extract
+    def __init__(self, executor=None, show_progress=True, stacktraces=False, workers=DEFAULT_WORKERS, loop=None):
         self.executor = executor
         self.input_queue = asyncio.Queue()
         self.output_queue = asyncio.Queue()
         self.show_progress = show_progress
         self.worker_count = workers or self.DEFAULT_WORKERS
         self.stacktraces = stacktraces
-        self.loop = asyncio.get_event_loop()
 
         # State data
         self.entry_count = 0
         self.complete_count = 0
         self.active_count = 0
         self.all_enqueued = False
+        self.loop = loop or asyncio.get_event_loop()
 
     def _show_progress(self, newline=False):
          if not self.show_progress:
@@ -133,7 +137,7 @@ class AsyncExecutor():
 
     async def stream(self, source):
         # Enqueue all work tasks
-        for entry in source:
+        async for entry in source:
             self.entry_count += 1
             self.input_queue.put_nowait(entry)
         self.all_enqueued = True
@@ -147,10 +151,11 @@ class AsyncExecutor():
 
         while not self._is_complete() or self.output_queue.qsize():
             try:
-                result_pair = await asyncio.wait_for(self.output_queue.get(), timeout=.1)
+                entry = await asyncio.wait_for(self.output_queue.get(), timeout=.1)
             except asyncio.TimeoutError:
                 continue
-            yield result_pair
+            self.output_queue.task_done()
+            yield entry
             self._show_progress()
         self._show_progress(newline=True)
 
@@ -172,7 +177,7 @@ class AsyncExecutor():
                         return self.executor(entry.value)
                     entry.value = await self.loop.run_in_executor(None, executor_wrapper)
             except Exception as e:
-                entry.errors(e)
+                entry.error(e)
                 if self.stacktraces:
                     result = '{}'.format(traceback.format_exc())
                 else:

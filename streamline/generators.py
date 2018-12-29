@@ -13,8 +13,8 @@ class FileReader():
 
     async def stream(self):
         source = utils.get_file_io(self.source_name)
-        for line in source:
-            yield entries.Entry(line.rstrip(self.DELIMITER))
+        for index, line in enumerate(source):
+            yield entries.Entry(line.rstrip(self.DELIMITER), index=index)
 
         if hasattr(source, 'close'):
             source.close()

@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 
 from .utils import import_obj, inject_module
 
@@ -15,7 +16,7 @@ class ScpHandler():
         self.client_keys = None
 
     @classmethod
-    def parse_args(cls, parser):
+    def args(cls, parser):
         parser.add_argument(
             'source',
             nargs='?',
@@ -50,7 +51,7 @@ class ShellHandler():
         self.command = command
 
     @classmethod
-    def parse_args(cls, parser):
+    def args(cls, parser):
         parser.add_argument(
             'command',
             nargs='?',
@@ -92,7 +93,7 @@ class SSHHandler():
             self.as_user = as_user
 
     @classmethod
-    def parse_args(cls, parser):
+    def args(cls, parser):
         parser.add_argument(
             'command',
             nargs='?',
@@ -112,20 +113,20 @@ class SSHHandler():
             help='Sudo as user'
         )
 
-    async def handle(self, entry):
+    async def handle(self, value):
         if not self.client_keys:
             self.client_keys = await _get_client_keys()
 
         command_results = []
         commands = [self.command]
-        host = entry.strip()
+        host = value.strip()
         async with asyncssh.connect(host, known_hosts=None, client_keys=self.client_keys) as conn:
             for command in commands:
                 if self.as_user:
                     command = 'sudo -u {} {}'.format(self.as_user, command)
                 result = await conn.run(command)
                 command_results.append({
-                    'host': entry,
+                    'host': value,
                     'command': command,
                     'exit_code': result.exit_status,
                     'stdout': result.stdout,
@@ -149,12 +150,12 @@ class HTTPHandler():
         inject_module('requests', globals())
 
     @classmethod
-    def parse_args(cls, parser):
+    def args(cls, parser):
         parser.add_argument(
             'url',
             nargs='?',
-            default='http://{entry}',
-            help='URL of resource (defaults to http://{entry})'
+            default='https://{value}/',
+            help='URL of resource (defaults to https://{value}/)'
         )
         parser.add_argument(
             '--method',
@@ -162,8 +163,8 @@ class HTTPHandler():
             help='HTTP Method to use (GET/POST, etc)'
         )
 
-    def handle(self, entry):
-        url = self.url.format(entry=entry)
+    def handle(self, value):
+        url = self.url.format(value=value)
         response = requests.request(self.method, url)
         result = {
             'headers': dict(response.headers),
@@ -175,11 +176,17 @@ class HTTPHandler():
             result['response'] = response.text
         return result
 
+class SleepHandler():
+    async def handle(self, value):
+        await asyncio.sleep(1)
+        return value
+
 EXECUTORS = {
     'http': HTTPHandler,
     'ssh': SSHHandler,
     'shell': ShellHandler,
     'scp': ScpHandler,
+    'sleep': SleepHandler,
 }
 
 def load_executor(path, options):
@@ -189,11 +196,14 @@ def load_executor(path, options):
         Executor = import_obj(path)
     else:
         Executor = EXECUTORS.get(path)
-    executor_parser = argparse.ArgumentParser()
-    if Executor and hasattr(Executor, 'parse_args'):
-        Executor.parse_args(executor_parser)
-        executor_args = executor_parser.parse_args(options)
-        executor = Executor(**executor_args.__dict__).handle
+    if Executor and hasattr(Executor, 'handle'):
+        options = {}
+        if hasattr(Executor, 'args'):
+            executor_parser = argparse.ArgumentParser()
+            Executor.args(executor_parser)
+            executor_args = executor_parser.parse_args(options)
+            options.update(executor_args.__dict__)
+        executor = Executor(**options).handle
     else:
         executor = Executor
     return executor

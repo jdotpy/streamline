@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import logging
+import sys
 import os
 
 from . import executors
@@ -16,7 +17,7 @@ def streamline_command():
     cmd_parser.add_argument('--input', help='Set source (Default stdin)', default='-')
     cmd_parser.add_argument('--output', help='Set target of output (Default stdout)', default='-')
     cmd_parser.add_argument(
-        '-n', '--headers-only',
+        '--show-input',
         help='Only show input values with truthy non-exception results (useful with --filter)',
         action='store_true',
         default=False,
@@ -37,6 +38,14 @@ def streamline_command():
         default='file',
     )
     cmd_parser.add_argument(
+        '-f', '--filter',
+        help='Python filter expression (e.g. "\'foo\' in value")',
+    )
+    cmd_parser.add_argument(
+        '-x', '--python',
+        help='Python transformation expression (e.g. "value = value.replace")',
+    )
+    cmd_parser.add_argument(
         '-w', '--workers',
         type=int,
         help='Number of concurrent workers for execution modules',
@@ -51,7 +60,7 @@ def streamline_command():
     cmd_parser.add_argument(
         '-p', '--progress',
         action='store_true',
-        help='Output progress bar and dont display results until the end',
+        help='Output progress bar',
         default=False,
     )
     cmd_parser.add_argument(
@@ -73,22 +82,38 @@ def streamline_command():
     Consumer = consumers.load_consumer(args.consumer)
     consumer = Consumer(args.output, headers=args.headers)
 
-    streamers = []
+    command_streamers = []
 
     # Configure the any async executor
+    loop = asyncio.get_event_loop()
     if args.executor:
         executor = executors.load_executor(args.executor, extra_args)
+        if executor is None:
+            print('Invalid executor specified:', args.executor)
+            sys.exit(1)
         ae = streamers.AsyncExecutor(
             executor,
             show_progress=args.progress,
             stacktraces=args.stacktraces,
             workers=args.workers,
+            loop=loop,
         )
-        streamers.append(ae.stream)
+        command_streamers.append(ae.stream)
 
-    future = pipe(generator.stream(), streamers, consumer=consumer.stream)
+    # Python Exec
+    if args.python:
+        command_streamers.append(streamers.PyExecTransform(code=args.python).stream)
+
+    # Pyton Filters
+    if args.filter:
+        command_streamers.append(streamers.PyExecFilter(code=args.filter).stream)
+
+    # Extractor
+    if args.extract:
+        command_streamers.append(streamers.ExtractionStreamer(selector=args.extract).stream)
+
+    future = pipe(generator.stream(), command_streamers, consumer=consumer.stream)
 
     # Loop until complete
-    loop = asyncio.get_event_loop()
-    task = asyncio.ensure_future(future)
+    task = asyncio.ensure_future(future, loop=loop)
     loop.run_until_complete(task)

@@ -12,8 +12,8 @@ class Entry():
     def get_value(self):
         return self.values[-1]
 
-    def set_value(self):
-        return self.values[-1]
+    def set_value(self, new_value):
+        self.values.append(new_value)
 
     def error(self, e):
         self.errors.append(e)
