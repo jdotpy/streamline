@@ -1,5 +1,7 @@
 import re
 
+from . import utils
+
 INDEX_ATTR_PATTERN = r'(\[\*\])|(\[\d\])'
 class IndexSelector:
     def __init__(self, index):
@@ -8,16 +10,13 @@ class IndexSelector:
     def __str__(self):
         return 'IndexSelector({})'.format(self.index)
 
-def _truthy(entries):
-    return [entry for entry in entries if entry]
-
 def parse_selectors(path):
     if path is None:
         return []
     selectors = []
     dotted_chunks = path.split('.')
     for section in dotted_chunks:
-        chunks = _truthy(re.split(INDEX_ATTR_PATTERN, section))
+        chunks = utils.truthy(re.split(INDEX_ATTR_PATTERN, section))
         for chunk in chunks:
             if chunk.startswith('[') and chunk.endswith(']'):
                 selectors.append(IndexSelector(chunk[1:-1]))
@@ -50,3 +49,11 @@ def extract_path(data, path=None):
             else:
                 result = getattr(result, selector, None)
     return result
+
+class Extractor():
+    """ Expose the extraction logic in class form """
+    def __init__(self, path):
+        self.selectors = parse_selectors(path)
+
+    def extract(self, data):
+        return extract_path(data, self.selectors)

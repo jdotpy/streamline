@@ -197,4 +197,3 @@ def load_executor(path, options):
     else:
         executor = Executor
     return executor
-

@@ -3,9 +3,11 @@ import asyncio
 import logging
 import os
 
-from .executors import EXECUTORS, load_executor
-from .streamers import STREAMERS, load_streamer
-from .core import streamline
+from . import executors
+from . import generators
+from . import consumers
+from . import streamers
+from .core import pipe
 
 logger = logging.getLogger(__file__)
 
@@ -25,9 +27,14 @@ def streamline_command():
         default=None,
     )
     cmd_parser.add_argument(
-        '-s', '--streamer',
-        help='Execution Module',
-        default='line',
+        '--generator',
+        help='Entry Generator Module',
+        default='file',
+    )
+    cmd_parser.add_argument(
+        '--consumer',
+        help='Entry Consumer/Writer Module',
+        default='file',
     )
     cmd_parser.add_argument(
         '-w', '--workers',
@@ -60,17 +67,28 @@ def streamline_command():
     )
     args, extra_args = cmd_parser.parse_known_args()
 
-    Streamer = load_streamer(args.streamer)
-    executor = load_executor(args.executor, extra_args)
-    streamer = Streamer(args.input, args.output)
+    # Setup input/output modules
+    Generator = generators.load_generator(args.generator)
+    generator = Generator(args.input)
+    Consumer = consumers.load_consumer(args.consumer)
+    consumer = Consumer(args.output, headers=args.headers)
+
+    streamers = []
+
+    # Configure the any async executor
+    if args.executor:
+        executor = executors.load_executor(args.executor, extra_args)
+        ae = streamers.AsyncExecutor(
+            executor,
+            show_progress=args.progress,
+            stacktraces=args.stacktraces,
+            workers=args.workers,
+        )
+        streamers.append(ae.stream)
+
+    future = pipe(generator.stream(), streamers, consumer=consumer.stream)
+
+    # Loop until complete
     loop = asyncio.get_event_loop()
-    task = asyncio.ensure_future(streamline(
-        streamer,
-        executor=executor,
-        headers=args.headers,
-        progress=args.progress,
-        extract=args.extract,
-        stacktraces=args.stacktraces,
-        worker_count=args.workers,
-    ))
+    task = asyncio.ensure_future(future)
     loop.run_until_complete(task)

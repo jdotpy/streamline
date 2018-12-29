@@ -1,84 +1,194 @@
+import traceback
+import asyncio
 import json
+import re
 import sys
 
-from .utils import import_obj
-
-def _get_file_io(name, write=False):
-    if name == '-' and write:
-        return sys.stdout
-    elif name == '-' and not write:
-        return sys.stdin
-    else:
-        return open(name, 'w' if write else 'r', 1)
+from .extractor import Extractor
+from . import utils
 
 
-class UninitializedStreamerError(Exception):
-     default_message = 'This is a default message!'
-
-     def __init__(self, message=None, **kwargs):
-         super().__init__(message or default_message, **kwargs)
-
-
-class LineStreamer():
-    DELIMITER = '\n'
-
-    def __init__(self, source_name, target_name, force_flush=False):
-        self.source_name = source_name
-        self.target_name = target_name
-        self.force_flush = force_flush
-
-        self.first_written = False
-        self.source = None
-        self.target = None
-        self.target_template = None
+class BaseStreamer():
+    def __init__(self, **options):
+        self.options = options
+        self.initialize()
 
     def __aiter__(self):
-        return self.read()
+        return self.stream()
 
-    async def read(self):
-        self.source = _get_file_io(self.source_name)
-        for line in self.source:
-            yield line.rstrip('\n')
+    async def handle(self, value):
+        raise NotImplemented('Implement either the stream or handle method of a BaseStreamer subclass')
 
-        if hasattr(self.source, 'close'):
-            self.source.close()
+    async def stream(self, source):
+        async for entry in source:
+            await self.handle(entry.value)
+            entry.value = result
+            yield entry
 
-    async def write(self, entry, result):
-        if '{entry}' in self.target_name:
-            self.target_template = self.target_name
-        else:
-            self.target = _get_file_io(self.target_name, write=True)
+    def initialize(self):
+        pass
 
-        if not isinstance(result, str):
-            result = json.dumps(result)
+class PyExecTransform(BaseStreamer):
+    def __init__(self, text=None, expression=True, show_exceptions=False):
+        self.show_exceptions = show_exceptions
+        self.runner = eval if expression else exec
+        try:
+            self.code = compile(transform_py, '<string::transform>', self.runner.__name__)
+        except Exception as e:
+            traceback.print_exc()
+            sys.exit(1)
 
-        if self.first_written:
-            result = self.DELIMITER + result
-        else:
-            self.first_written = True
+    async def stream(self, source):
+        async for i, entry in enumerate(source):
+            scope = {'value': entry.value, 'input': entry.original_value, 'i': entry.index, 'index': entry.index}
+            try:
+                if expression:
+                    entry.value = self.runner(self.code, globals(), scope)
+                else:
+                    self.runner(self.code, globals(), scope)
+                    entry.value = scope.get('result', None) or entry.value
+            except Exception as e:
+                if self.show_exceptions:
+                    entry.exception(e)
+                    traceback.print_exc()
+                else:
+                    continue
+            yield entry
 
-        if self.target_template:
-            with open(self.target_template.format(entry=entry), 'w') as target_file:
-                target_file.write(result)
-        elif self.target is None:
-            raise UninitializedStreamerError()
-        else:
-            self.target.write(result)
-            if self.force_flush and hasattr(self.target, 'flush'):
-                self.target.flush()
+class PyExecFilter(BaseStreamer):
+    def __init__(self, text=None, show_exceptions=False):
+        self.show_exceptions = show_exceptions
+        try:
+            self.code = compile(text, '<string::filter>', 'eval')
+        except Exception as e:
+            traceback.print_exc()
+            sys.exit(1)
 
-        if self.target and hasattr(self.target, 'close'):
-            self.target.close()
-        
+    async def stream(self, source):
+        async for i, entry in enumerate(source):
+            scope = {'value': entry.value, 'input': entry.original_value, 'i': entry.index, 'index': entry.index}
+            try:
+                keep = eval(self.code, globals(), scope)
+            except Exception as e:
+                keep = False
+                if self.show_exceptions:
+                    traceback.print_exc()
+            if keep:
+                yield entry
+
+class ExtractionStreamer(BaseStreamer):
+    def initialize(self):
+        self.extractor = Extractor(self.options['path'])
+
+    async def handle(self, value):
+        yield self.extractor.extract(result)
+
+class AsyncExecutor():
+    """
+        :: Worker-oriented event loop processor
+
+        Workers are no longer a necessary concept in an asynchronous world. However, the concept can still be very
+        helpful for controlling resource usage on the host machine or remote systems used by the job. For this reason
+        I'm re-implementing a worker-style executor pool which could be used with jobs that are threaded or async.
+    """
+    DEFAULT_WORKERS = 5
+
+    def __init__(self, executor=None, show_progress=True, stacktraces=False, extract=None, workers=DEFAULT_WORKERS):
+        self.extract = extract
+        self.executor = executor
+        self.input_queue = asyncio.Queue()
+        self.output_queue = asyncio.Queue()
+        self.show_progress = show_progress
+        self.worker_count = workers or self.DEFAULT_WORKERS
+        self.stacktraces = stacktraces
+        self.loop = asyncio.get_event_loop()
+
+        # State data
+        self.entry_count = 0
+        self.complete_count = 0
+        self.active_count = 0
+        self.all_enqueued = False
+
+    def _show_progress(self, newline=False):
+         if not self.show_progress:
+             return
+
+         sys.stdout.write('\r {done} out of {total} tasks complete - {percent_done}% (running={running}; pending={pending})'.format(
+             done=self.complete_count,
+             total=self.entry_count,
+             percent_done=int(self.complete_count / self.entry_count * 100),
+             running=self.active_count,
+             pending=self.input_queue.qsize(),
+         ))
+         if newline:
+             # Finish with a newline
+             print('')
+
+    def _save_result(self, entry):
+        self.complete_count += 1
+        self.output_queue.put_nowait(entry)
+
+    def _is_complete(self):
+        return self.complete_count == self.entry_count
+
+    async def stream(self, source):
+        # Enqueue all work tasks
+        for entry in source:
+            self.entry_count += 1
+            self.input_queue.put_nowait(entry)
+        self.all_enqueued = True
+
+        # Start workers
+        workers = []
+        for i in range(self.worker_count):
+            worker = self.loop.create_task(self._worker())
+            workers.append(worker)
+            asyncio.ensure_future(worker)
+
+        while not self._is_complete() or self.output_queue.qsize():
+            try:
+                result_pair = await asyncio.wait_for(self.output_queue.get(), timeout=.1)
+            except asyncio.TimeoutError:
+                continue
+            yield result_pair
+            self._show_progress()
+        self._show_progress(newline=True)
+
+    async def _worker(self):
+        while True:
+            try:
+                entry = await asyncio.wait_for(self.input_queue.get(), timeout=.1)
+            except asyncio.TimeoutError:
+                if self.input_queue.qsize() == 0 and self.all_enqueued:
+                    return
+                else:
+                    continue
+            self.active_count += 1
+            try:
+                if asyncio.iscoroutinefunction(self.executor):
+                    entry.value = await self.executor(entry.value)
+                else:
+                    def executor_wrapper():
+                        return self.executor(entry.value)
+                    entry.value = await self.loop.run_in_executor(None, executor_wrapper)
+            except Exception as e:
+                entry.errors(e)
+                if self.stacktraces:
+                    result = '{}'.format(traceback.format_exc())
+                else:
+                    result = str(e)
+            self._save_result(entry)
+            self.input_queue.task_done()
+            self.active_count -= 1
+
+async def noop(source, **kwargs):
+    for entry in source:
+        yield entry
+
+
 STREAMERS = {
-    'line': LineStreamer,
+    'extractor': ExtractionStreamer,
+    'py': PyExecTransform,
+    'pyfilter': PyExecFilter,
+    'noop': noop,
 }
-
-def load_streamer(path):
-    if path is None:
-        return None
-    elif '.' in path:
-        Streamer = import_obj(path)
-    else:
-        Streamer = STREAMERS.get(path)
-    return Streamer

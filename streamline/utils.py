@@ -2,6 +2,14 @@ from importlib import import_module
 import sys
 import os
 
+def get_file_io(name, write=False):
+    if name == '-' and write:
+        return sys.stdout
+    elif name == '-' and not write:
+        return sys.stdin
+    else:
+        return open(name, 'w' if write else 'r', 1)
+
 def import_obj(path):
     current_dir = os.path.abspath('.')
     if current_dir not in sys.path:
@@ -21,3 +29,7 @@ def inject_module(module_name, namespace):
         sys.exit(6)
     sys.modules[module_name] = module
     namespace[module_name] = module
+
+def truthy(entries):
+    return [entry for entry in entries if entry]
+
