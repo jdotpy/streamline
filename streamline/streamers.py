@@ -249,4 +249,17 @@ STREAMERS = {
     'truthy': truthy,
     'noop': noop,
     'split': split_lists,
+    'breakdown': ValueBreakdown,
 }
+
+def load_streamer(path, **options):
+    if path is None:
+        return None
+    elif '.' in path:
+        Streamer = utils.import_obj(path)
+    else:
+        Streamer = STREAMERS.get(path)
+    if type(Streamer) == type:
+        return Streamer(**options).stream
+    return Streamer
+

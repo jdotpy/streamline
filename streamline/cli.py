@@ -38,6 +38,11 @@ def streamline_command(args):
         default='file',
     )
     cmd_parser.add_argument(
+        '--streamers',
+        help='Additional streamers to apply',
+        nargs='*',
+    )
+    cmd_parser.add_argument(
         '-f', '--filter',
         help='Python filter expression (e.g. "\'foo\' in value")',
     )
@@ -111,6 +116,13 @@ def streamline_command(args):
     # Extractor
     if args.extract:
         command_streamers.append(streamers.ExtractionStreamer(selector=args.extract).stream)
+
+    # Additional Streamers
+    if args.streamers:
+        for streamer_name in args.streamers:
+            streamer = streamers.load_streamer(streamer_name)
+            command_streamers.append(streamer)
+
 
     future = pipe(generator.stream(), command_streamers, consumer=consumer.stream)
 
