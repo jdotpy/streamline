@@ -38,7 +38,7 @@ def extract_path(data, path=None):
             else:
                 try:
                     result = result[int(selector.index)]
-                except IndexError as e:
+                except (KeyError, IndexError) as e:
                     result = None
         elif selector == '*':
             values = result.values()

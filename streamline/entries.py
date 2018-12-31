@@ -20,3 +20,9 @@ class Entry():
         self.value = None
 
     value = property(get_value, set_value)
+
+def entry_wrap(items):
+    return [Entry(item) for item in items]
+
+def entry_unwrap(entries):
+    return [entry.value for entry in entries]

@@ -3,12 +3,20 @@ import sys
 import os
 
 def get_file_io(name, write=False):
+    # Test for file-like objects we can use first
+    if hasattr(name, 'write') and write:
+        return name
+    elif hasattr(name, 'read') and not write:
+        return name
+
+    # Test for stdin/stdout special case
     if name == '-' and write:
         return sys.stdout
     elif name == '-' and not write:
         return sys.stdin
-    else:
-        return open(name, 'w' if write else 'r', 1)
+
+    # Assume this is a file
+    return open(name, 'w' if write else 'r', 1)
 
 def import_obj(path):
     current_dir = os.path.abspath('.')

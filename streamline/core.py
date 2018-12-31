@@ -1,8 +1,11 @@
+import asyncio
 
 async def drain(generator):
     """ A no-op drain of a generator """
+    items = []
     async for item in generator:
-        pass
+        items.append(item)
+    return items
 
 async def transync(synchronous_iter):
     """
@@ -12,6 +15,10 @@ async def transync(synchronous_iter):
     for item in synchronous_iter:
         yield item
 
+async def static_pipe(stream, inputs):
+    source = transync(inputs)
+    outputs = await drain(stream(source))
+    return outputs
 
 async def pipe(generator, streamers, consumer=None):
     """
@@ -32,3 +39,9 @@ async def pipe(generator, streamers, consumer=None):
         pipe = streamer(pipe)
 
     await consumer(pipe)
+
+def sync_exec(future):
+    loop = asyncio.get_event_loop()
+    task = asyncio.ensure_future(future, loop=loop)
+    result = loop.run_until_complete(task)
+    return result

@@ -12,7 +12,7 @@ from .core import pipe
 
 logger = logging.getLogger(__file__)
 
-def streamline_command():
+def streamline_command(args):
     cmd_parser = argparse.ArgumentParser(prog='streamline')
     cmd_parser.add_argument('--input', help='Set source (Default stdin)', default='-')
     cmd_parser.add_argument('--output', help='Set target of output (Default stdout)', default='-')
@@ -74,7 +74,7 @@ def streamline_command():
         default=False,
         help='Extract a part of the result by dot path (e.g. result.foobar)',
     )
-    args, extra_args = cmd_parser.parse_known_args()
+    args, extra_args = cmd_parser.parse_known_args(args)
 
     # Setup input/output modules
     Generator = generators.load_generator(args.generator)

@@ -1,9 +1,11 @@
+from collections import OrderedDict
 import traceback
 import asyncio
 import json
 import re
 import sys
 
+from .entries import entry_wrap, Entry
 from .extractor import Extractor
 from . import utils
 
@@ -186,14 +188,65 @@ class AsyncExecutor():
             self.input_queue.task_done()
             self.active_count -= 1
 
-async def noop(source, **kwargs):
+async def noop(source):
     for entry in source:
         yield entry
+
+async def truthy(source):
+    async for entry in source:
+        if entry.value:
+            yield entry
+
+async def split_lists(source):
+    """ Splits arrays into multiple entries """
+    async for entry in source:
+        # No-op on non-list values
+        if not isinstance(entry.value, list):
+            yield entry
+
+
+        for wrapped_value in entry_wrap(entry.value):
+            yield wrapped_value
+
+class ValueBreakdown(BaseStreamer):
+    """ Gives summary stats either instead of the values or as an extra event at the end"""
+
+    def __init__(self, inputs=False, append=False):
+        self.inputs = inputs
+        self.append = append
+
+    async def stream(self, source):
+        stats = OrderedDict()
+        async for entry in source:
+            if entry.value in stats:
+                value_stats = stats[entry.value]
+                value_stats['count'] += 1
+                if self.inputs:
+                    value_stats['inputs'].append(entry.original_value)
+            else:
+                metadata = {
+                    'value': entry.value,
+                    'count': 1,
+                }
+                if self.inputs:
+                    metadata['inputs'] = [entry.original_value]
+                stats[entry.value] = metadata
+
+            if self.append:
+                yield entry
+
+        if self.append:
+            yield Entry(list(stats.values()))
+        else:
+            for wrapped_value in entry_wrap(stats.values()):
+                yield wrapped_value
 
 
 STREAMERS = {
     'extractor': ExtractionStreamer,
     'py': PyExecTransform,
     'pyfilter': PyExecFilter,
+    'truthy': truthy,
     'noop': noop,
+    'split': split_lists,
 }
