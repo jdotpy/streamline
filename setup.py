@@ -4,7 +4,7 @@ setup(
     name = 'streamline',
     scripts=['bin/streamline'],
     packages=['streamline'],
-    version = '0.2.00',
+    version = '0.2.01',
     description = 'CLI tool for doing async tasks and transformations',
     author = 'KJ',
     author_email = 'jdotpy@users.noreply.github.com',
