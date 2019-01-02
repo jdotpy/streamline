@@ -47,3 +47,10 @@ def inject_module(module_name, namespace):
 def truthy(entries):
     return [entry for entry in entries if entry]
 
+def arg_help(description, example=None):
+    def decorator(streamer):
+        streamer._arg_description = description
+        streamer._arg_example = example
+        return streamer
+    return decorator
+

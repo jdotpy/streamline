@@ -49,7 +49,15 @@ Streamline modules aim to provide all the useful information in object form as o
   slashdot.org: 0
 ```
 
-Everything before the `--` is an option for the streamline command and options after that are for the particular modules we're using (`shell` in this case)
+Everything before the `--` is an option for the streamline command and options after that are for the particular modules we're using (`shell` in this case).
+
+There are many modules available that do asynchronous jobs and transformations to input. To get available options for a particular module run:
+
+`streamline -s shell --help`
+
+
+## Built-in Modules
+
 
 
 ## Technical Vocabulary

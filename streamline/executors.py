@@ -3,13 +3,14 @@ import argparse
 import asyncio
 import shlex
 
-from .utils import import_obj, inject_module
+from .utils import import_obj, inject_module, arg_help
 
 async def _get_client_keys():
     client = await asyncssh.connect_agent()
     keys = await client.get_keys()
     return keys
 
+@arg_help('Treat each value as a host to connect to. Copy a file to or from this host', example='"/tmp/file.txt" "{value}:/tmp/file.txt')
 class ScpHandler():
     async_handler = True
     def __init__(self, source=None, target=None):
@@ -31,24 +32,25 @@ class ScpHandler():
             help='File copy target'
         )
 
-    async def handle(self, entry):
+    async def handle(self, value):
         if not self.client_keys:
             self.client_keys = await _get_client_keys()
 
-        source = self.source.format(entry=entry)
-        target = self.target.format(entry=entry)
-        async with asyncssh.connect(entry, known_hosts=None, client_keys=self.client_keys) as conn:
-            if self.source.startswith('{entry}:'):
+        source = self.source.format(value=value)
+        target = self.target.format(value=value)
+        async with asyncssh.connect(value, known_hosts=None, client_keys=self.client_keys) as conn:
+            if self.source.startswith('{value}:'):
                 source = (conn, source.split(':', 1)[1])
-            if self.target.startswith('{entry}:'):
+            if self.target.startswith('{value}:'):
                 target = (conn, target.split(':', 1)[1])
             await asyncssh.scp(source, target)
         return {
             'success': True,
-            'source': self.source.format(entry=entry),
-            'target': self.target.format(entry=entry),
+            'source': self.source.format(value=value),
+            'target': self.target.format(value=value),
         }
 
+@arg_help('Run a shell command for each value', example='"nc -zv {value} 22"')
 class ShellHandler():
     async_handler = True
     def __init__(self, command=None):
@@ -77,6 +79,7 @@ class ShellHandler():
             'exit_code': subprocess.returncode,
         }
 
+@arg_help('Treat each value as a host to connect to. SSH in and run a command returning the output', example='"uptime"')
 class SSHHandler():
     async_handler = True
     NO_SUDO = object()
@@ -148,6 +151,7 @@ class SSHHandler():
             'commands': command_results,
         }
 
+@arg_help('Use a template to execute an HTTP request for each value', example='"https://{value}/"')
 class HTTPHandler():
     async_handler = True
     def __init__(self, url=None, method=None):
@@ -182,6 +186,7 @@ class HTTPHandler():
             result['response'] = response.text
         return result
 
+@arg_help('Sleep for each entry making no change to its value')
 class SleepHandler():
     async_handler = True
     

@@ -11,6 +11,7 @@ from .extractor import Extractor
 from . import executors
 from . import utils
 
+arg_help = utils.arg_help
 
 class BaseStreamer():
     def __init__(self, **options):
@@ -32,11 +33,26 @@ class BaseStreamer():
     def initialize(self):
         pass
 
+@arg_help('Translate each value by assigning it to the result of a python expression', example='"value.upper()"')
 class PyExecTransform(BaseStreamer):
-    def __init__(self, code=None, expression=True, show_exceptions=False):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            'code',
+            nargs='?',
+            help='Python code to evaluate',
+        )
+        parser.add_argument(
+            '--statement',
+            action='store_true',
+            help='Indicates that the python code is not an expression but a statement',
+            default=False,
+        )
+
+    def __init__(self, code=None, statement=False, show_exceptions=False):
         self.show_exceptions = show_exceptions
-        self.expression = expression
-        self.runner = eval if expression else exec
+        self.expression = not statement
+        self.runner = exec if statement else eval
         try:
             self.code = compile(code, '<string::transform>', self.runner.__name__)
         except Exception as e:
@@ -64,7 +80,16 @@ class PyExecTransform(BaseStreamer):
                     continue
             yield entry
 
+@arg_help('Filter out values that dont have a truthy result to a particular python expression', example='"\'foobar\' in value"')
 class PyExecFilter(BaseStreamer):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            'code',
+            nargs='?',
+            help='Python code to evaluate',
+        )
+
     def __init__(self, code=None, show_exceptions=False):
         self.show_exceptions = show_exceptions
         try:
@@ -85,6 +110,7 @@ class PyExecFilter(BaseStreamer):
             if keep:
                 yield entry
 
+@arg_help('Filter out values that dont have a truthy result to a particular python expression', example='--selector exit_code')
 class ExtractionStreamer(BaseStreamer):
     def initialize(self):
         self.extractor = Extractor(self.options['selector'])
@@ -205,15 +231,18 @@ class AsyncExecutor():
             self.input_queue.task_done()
             self.active_count -= 1
 
+@arg_help('No operation. Just for testing.')
 async def noop(source):
     for entry in source:
         yield entry
 
+@arg_help('Filter out values that are not truthy')
 async def truthy(source):
     async for entry in source:
         if entry.value:
             yield entry
 
+@arg_help('Take json strings and parse them into objects so other streamers can inspect attributes')
 async def json_parser(source):
     async for entry in source:
         try:
@@ -222,6 +251,7 @@ async def json_parser(source):
             entry.error(e)
         yield entry
 
+@arg_help('Take any values that are an array and treat each value of an array as a separate input ')
 async def split_lists(source):
     """ Splits arrays into multiple entries """
     async for entry in source:
@@ -233,6 +263,7 @@ async def split_lists(source):
         for wrapped_value in entry_wrap(entry.value):
             yield wrapped_value
 
+@arg_help('Show a report of how many input values ended up with a particular result value')
 class ValueBreakdown(BaseStreamer):
     """ Gives summary stats either instead of the values or as an extra event at the end"""
 
@@ -336,5 +367,5 @@ def load_streamer(path, arg_list, options=None, print_help=False):
                 Streamer.args(streamer_parser)
                 streamer_args, arg_list = streamer_parser.parse_known_args(arg_list)
                 kwargs.update(streamer_args.__dict__)
-            return Streamer(**options).stream, arg_list
+            return Streamer(**kwargs).stream, arg_list
         return Streamer, arg_list

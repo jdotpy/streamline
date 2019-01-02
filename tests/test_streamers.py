@@ -61,7 +61,7 @@ def test_py_exec_transform():
     # Full statements
     do_streamer_test(
         streamers.PyExecTransform(
-            expression=False,
+            statement=True,
             code="foo = value.title(); result=foo;",
         ).stream,
         ['hi', 'hello'],

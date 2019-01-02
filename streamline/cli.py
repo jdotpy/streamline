@@ -88,6 +88,20 @@ def streamline_command(args):
                 print('=' * 15 + ' Streamer::{} '.format(streamer_name) + '=' * 15)
                 print('\n')
                 streamers.load_streamer(streamer_name, extra_args, print_help=True)
+        else:
+            print('\n')
+            print('=' * 15 + ' Streamers ' + '=' * 15)
+            for streamer_name, streamer in streamers.STREAMERS.items():
+                description = getattr(streamer, '_arg_description', 'An undocumented module')
+                example = getattr(streamer, '_arg_example', '')
+                invocation = 'streamline -s {} --'.format(streamer_name)
+                print('\n::{}::\n\tDescription: {}\n\tExample: {} {}'.format(
+                    streamer_name,
+                    description,
+                    invocation,
+                    example,
+                ))
+                
         return
 
     # Streamers
