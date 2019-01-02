@@ -112,6 +112,13 @@ class PyExecFilter(BaseStreamer):
 
 @arg_help('Filter out values that dont have a truthy result to a particular python expression', example='--selector exit_code')
 class ExtractionStreamer(BaseStreamer):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--selector',
+            help='dot-separated path to desired attribute',
+        )
+
     def initialize(self):
         self.extractor = Extractor(self.options['selector'])
 
@@ -349,8 +356,7 @@ def load_streamer(path, arg_list, options=None, print_help=False):
                 Executor.args(streamer_parser)
                 executor_args, arg_list = streamer_parser.parse_known_args(arg_list)
                 kwargs.update(executor_args.__dict__)
-            else:
-                executor = Executor(**kwargs).handle
+            executor = Executor(**kwargs).handle
         else:
             executor = Executor
 

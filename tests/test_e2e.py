@@ -66,6 +66,13 @@ def test_noop_e2e():
 def test_ae_e2e():
     do_cli_call('streamline -s sleep', "Foo\nBar", "Foo\nBar")
 
+def test_ae_with_args_():
+    do_cli_call(
+        'streamline -s http extract -- "https://{value}/" --selector "code"',
+        "slashdot.org\nwww.google.com",
+        "200\n200",
+    )
+
 def test_headers():
     do_cli_call('streamline --python "value.upper()" --headers', "Foo\nBar", "Foo: FOO\nBar: BAR")
 
