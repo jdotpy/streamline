@@ -1,11 +1,25 @@
+import asyncio
 import shlex
 import sys
 import io
 
 from streamline import cli
 
+async def executor_addone(value):
+    return int(value) + 1
+executor_addone.async_handler = True
+
+async def streamer_addone(source):
+    async for entry in source:
+        try:
+            entry.value = int(entry.value) + 1
+        except Exception as e:
+            entry.error(e)
+        yield entry
+
 def noop():
     pass
+
 
 class FakeIO():
     def __init__(self, stdin_text=''):
@@ -50,7 +64,21 @@ def test_noop_e2e():
     do_cli_call('streamline', "Foo\nBar", "Foo\nBar")
     
 def test_ae_e2e():
-    do_cli_call('streamline -m sleep', "Foo\nBar", "Foo\nBar")
+    do_cli_call('streamline -s sleep', "Foo\nBar", "Foo\nBar")
 
 def test_headers():
     do_cli_call('streamline --python "value.upper()" --headers', "Foo\nBar", "Foo: FOO\nBar: BAR")
+
+def test_imported_executor():
+    do_cli_call(
+        'streamline -s tests.test_e2e.executor_addone tests.test_e2e.executor_addone',
+        "1\n2",
+        "3\n4",
+    )
+
+def test_imported_streamer():
+    do_cli_call(
+        'streamline -s tests.test_e2e.streamer_addone tests.test_e2e.streamer_addone',
+        "1\n2",
+        "3\n4",
+    )

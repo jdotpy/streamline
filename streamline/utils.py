@@ -19,14 +19,20 @@ def get_file_io(name, write=False):
     return open(name, 'w' if write else 'r', 1)
 
 def import_obj(path):
+    # Ensure the current directory is on the path
     current_dir = os.path.abspath('.')
     if current_dir not in sys.path:
         sys.path.append(current_dir)
+
+    # Split the object name and the module path
     module_path, handler_name = path.rsplit('.', 1)
     module = import_module(module_path)
+    return getattr(module, handler_name)
     for attr in module_path.split('.')[1:]:
         module = getattr(module, attr)
     handler_obj = getattr(module, handler_name)
+    if handler_obj is None:
+        raise ValueError('Unable to import object: {}'.format(path))
     return handler_obj
 
 def inject_module(module_name, namespace):

@@ -18,14 +18,9 @@ def streamline_command(args):
     cmd_parser.add_argument('--output', help='Set target of output (Default stdout)', default='-')
     cmd_parser.add_argument(
         '--show-input',
-        help='Only show input values with truthy non-exception results (useful with --filter)',
+        help='Show original input value instead of the transformed value (useful with --filter)',
         action='store_true',
         default=False,
-    )
-    cmd_parser.add_argument(
-        '-m', '--executor',
-        help='Execution Module',
-        default=None,
     )
     cmd_parser.add_argument(
         '--generator',
@@ -38,7 +33,7 @@ def streamline_command(args):
         default='file',
     )
     cmd_parser.add_argument(
-        '--streamers',
+        '-s', '--streamers',
         help='Additional streamers to apply',
         nargs='*',
     )
@@ -51,21 +46,9 @@ def streamline_command(args):
         help='Python transformation expression (e.g. "value = value.replace")',
     )
     cmd_parser.add_argument(
-        '-w', '--workers',
-        type=int,
-        help='Number of concurrent workers for execution modules',
-        default=10,
-    )
-    cmd_parser.add_argument(
         '-d', '--headers',
         action='store_true',
         help='Prefix output with entry name',
-        default=False,
-    )
-    cmd_parser.add_argument(
-        '-p', '--progress',
-        action='store_true',
-        help='Output progress bar',
         default=False,
     )
     cmd_parser.add_argument(
@@ -89,43 +72,27 @@ def streamline_command(args):
 
     command_streamers = []
 
-    # Configure the any async executor
-    loop = asyncio.get_event_loop()
-    if args.executor:
-        executor = executors.load_executor(args.executor, extra_args)
-        if executor is None:
-            print('Invalid executor specified:', args.executor)
-            sys.exit(1)
-        ae = streamers.AsyncExecutor(
-            executor,
-            show_progress=args.progress,
-            stacktraces=args.stacktraces,
-            workers=args.workers,
-            loop=loop,
-        )
-        command_streamers.append(ae.stream)
+    # Streamers
+    if args.streamers:
+        for streamer_name in args.streamers:
+            streamer, extra_args = streamers.load_streamer(streamer_name, extra_args)
+            command_streamers.append(streamer)
 
-    # Python Exec
+    # Shortcut - Python Exec
     if args.python:
         command_streamers.append(streamers.PyExecTransform(code=args.python).stream)
 
-    # Pyton Filters
+    # Shortcut - Pyton Filters
     if args.filter:
         command_streamers.append(streamers.PyExecFilter(code=args.filter).stream)
 
-    # Extractor
+    # Shortcut - Extractor
     if args.extract:
         command_streamers.append(streamers.ExtractionStreamer(selector=args.extract).stream)
-
-    # Additional Streamers
-    if args.streamers:
-        for streamer_name in args.streamers:
-            streamer = streamers.load_streamer(streamer_name)
-            command_streamers.append(streamer)
-
 
     future = pipe(generator.stream(), command_streamers, consumer=consumer.stream)
 
     # Loop until complete
+    loop = asyncio.get_event_loop()
     task = asyncio.ensure_future(future, loop=loop)
     loop.run_until_complete(task)

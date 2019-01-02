@@ -9,6 +9,7 @@ async def _get_client_keys():
     return keys
 
 class ScpHandler():
+    async_handler = True
     def __init__(self, source=None, target=None):
         inject_module('asyncssh', globals())
         self.source = source
@@ -47,6 +48,7 @@ class ScpHandler():
         }
 
 class ShellHandler():
+    async_handler = True
     def __init__(self, command=None):
         self.command = command
 
@@ -55,12 +57,12 @@ class ShellHandler():
         parser.add_argument(
             'command',
             nargs='?',
-            default='echo "{entry}"',
+            default='echo "{value}"',
             help='Subprocess command to run'
         )
 
-    async def handle(self, entry):
-        command = self.command.format(entry=shlex.quote(entry))
+    async def handle(self, value):
+        command = self.command.format(value=shlex.quote(value))
         subprocess = await asyncio.create_subprocess_shell(
             command,
             stdout=asyncio.subprocess.PIPE,
@@ -74,6 +76,7 @@ class ShellHandler():
         }
 
 class SSHHandler():
+    async_handler = True
     NO_SUDO = object()
 
     def __init__(self, command=None, continue_on_error=True, as_user=None):
@@ -144,6 +147,7 @@ class SSHHandler():
         }
 
 class HTTPHandler():
+    async_handler = True
     def __init__(self, url=None, method=None):
         self.url = url
         self.method = method
@@ -177,6 +181,8 @@ class HTTPHandler():
         return result
 
 class SleepHandler():
+    async_handler = True
+    
     async def handle(self, value):
         await asyncio.sleep(1)
         return value
@@ -188,22 +194,3 @@ EXECUTORS = {
     'scp': ScpHandler,
     'sleep': SleepHandler,
 }
-
-def load_executor(path, options):
-    if path is None:
-        return None
-    elif '.' in path:
-        Executor = import_obj(path)
-    else:
-        Executor = EXECUTORS.get(path)
-    if Executor and hasattr(Executor, 'handle'):
-        options = {}
-        if hasattr(Executor, 'args'):
-            executor_parser = argparse.ArgumentParser()
-            Executor.args(executor_parser)
-            executor_args = executor_parser.parse_args(options)
-            options.update(executor_args.__dict__)
-        executor = Executor(**options).handle
-    else:
-        executor = Executor
-    return executor

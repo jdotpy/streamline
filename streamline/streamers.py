@@ -1,5 +1,6 @@
 from collections import OrderedDict
 import traceback
+import argparse
 import asyncio
 import json
 import re
@@ -7,6 +8,7 @@ import sys
 
 from .entries import entry_wrap, Entry
 from .extractor import Extractor
+from . import executors
 from . import utils
 
 
@@ -100,7 +102,22 @@ class AsyncExecutor():
     """
     DEFAULT_WORKERS = 5
 
-    def __init__(self, executor=None, show_progress=True, stacktraces=False, workers=DEFAULT_WORKERS, loop=None):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '-w', '--workers',
+            type=int,
+            help='Number of concurrent workers for execution modules',
+            default=10,
+        )
+        parser.add_argument(
+            '-p', '--show-progress',
+            action='store_true',
+            help='Output progress bar',
+            default=False,
+        )
+
+    def __init__(self, executor=None, show_progress=False, stacktraces=False, workers=DEFAULT_WORKERS, loop=None):
         self.executor = executor
         self.input_queue = asyncio.Queue()
         self.output_queue = asyncio.Queue()
@@ -197,6 +214,14 @@ async def truthy(source):
         if entry.value:
             yield entry
 
+async def json_parser(source):
+    async for entry in source:
+        try:
+            entry.value = json.loads(entry.value)
+        except Exception as e:
+            entry.error(e)
+        yield entry
+
 async def split_lists(source):
     """ Splits arrays into multiple entries """
     async for entry in source:
@@ -243,23 +268,61 @@ class ValueBreakdown(BaseStreamer):
 
 
 STREAMERS = {
-    'extractor': ExtractionStreamer,
+    'extract': ExtractionStreamer,
     'py': PyExecTransform,
     'pyfilter': PyExecFilter,
     'truthy': truthy,
     'noop': noop,
     'split': split_lists,
     'breakdown': ValueBreakdown,
-}
 
-def load_streamer(path, **options):
+    # We don't directly expose the async executor because it requires the module loading
+    #'exec': AsyncExecutor,
+    
+}
+# Add executors that need to be wrapped with AsyncExecutor
+STREAMERS.update(executors.EXECUTORS)
+
+def load_streamer(path, arg_list, options=None):
+    kwargs = {}
+    if options:
+        kwargs.update(options)
     if path is None:
         return None
     elif '.' in path:
         Streamer = utils.import_obj(path)
     else:
         Streamer = STREAMERS.get(path)
-    if type(Streamer) == type:
-        return Streamer(**options).stream
-    return Streamer
+    if Streamer is None:
+        raise ValueError('Invalid streamer: {}'.format(path))
 
+
+    if hasattr(Streamer, 'async_handler'):
+        # This is really a handler that needs wrapped with AsyncExecutor
+        Executor = Streamer
+        if Executor and hasattr(Executor, 'handle'):
+            if hasattr(Executor, 'args'):
+                executor_parser = argparse.ArgumentParser()
+                Executor.args(executor_parser)
+                executor_args, arg_list = executor_parser.parse_known_args(arg_list)
+                kwargs.update(executor_args.__dict__)
+            executor = Executor(**kwargs).handle
+        else:
+            executor = Executor
+
+        # Now build the wrapper
+        ae_parser = argparse.ArgumentParser()
+        AsyncExecutor.args(ae_parser)
+        ae_args, arg_list = ae_parser.parse_known_args(arg_list)
+        
+        ae = AsyncExecutor(executor, **ae_args.__dict__)
+        return ae.stream, arg_list
+    else:
+        if type(Streamer) == type:
+            if hasattr(Streamer, 'args'):
+                streamer_parser = argparse.ArgumentParser()
+                Streamer.args(streamer_parser)
+                streamer_args, arg_list = streamer_parser.parse_known_args(arg_list)
+                kwargs.update(streamer_args.__dict__)
+            return Streamer(**options).stream, arg_list
+        return Streamer, arg_list

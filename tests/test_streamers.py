@@ -83,6 +83,13 @@ def test_truth_filter():
         ['foobar', 34, True],
     )
 
+def test_json_parser():
+    do_streamer_test(
+        streamers.json_parser,
+        ['{"foo": "bar"}', '34', '[1,2]'],
+        [{"foo": "bar"}, 34, [1,2]],
+    )
+
 async def example_async_executor(value):
     await asyncio.sleep(.1)
     return value + 1
