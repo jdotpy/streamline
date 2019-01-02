@@ -1,5 +1,7 @@
+import subprocess
 import argparse
 import asyncio
+import shlex
 
 from .utils import import_obj, inject_module
 

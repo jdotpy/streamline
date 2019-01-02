@@ -13,7 +13,7 @@ from .core import pipe
 logger = logging.getLogger(__file__)
 
 def streamline_command(args):
-    cmd_parser = argparse.ArgumentParser(prog='streamline')
+    cmd_parser = argparse.ArgumentParser(prog='streamline', add_help=False)
     cmd_parser.add_argument('--input', help='Set source (Default stdin)', default='-')
     cmd_parser.add_argument('--output', help='Set target of output (Default stdout)', default='-')
     cmd_parser.add_argument(
@@ -57,10 +57,16 @@ def streamline_command(args):
         default=None,
     )
     cmd_parser.add_argument(
-        '--stacktraces',
+        '--errors',
         action='store_true',
         default=False,
-        help='Extract a part of the result by dot path (e.g. result.foobar)',
+        help='Extract any errors on entries use that as their value',
+    )
+    cmd_parser.add_argument(
+        '--help',
+        action='store_true',
+        default=False,
+        help='Print help',
     )
     args, extra_args = cmd_parser.parse_known_args(args)
 
@@ -71,6 +77,18 @@ def streamline_command(args):
     consumer = Consumer(args.output, headers=args.headers)
 
     command_streamers = []
+
+    if args.help:
+        print('=' * 15 + ' Streamline ' + '=' * 15)
+        print('\n')
+        cmd_parser.print_help()
+        if args.streamers:
+            for streamer_name in args.streamers:
+                print('\n\n')
+                print('=' * 15 + ' Streamer::{} '.format(streamer_name) + '=' * 15)
+                print('\n')
+                streamers.load_streamer(streamer_name, extra_args, print_help=True)
+        return
 
     # Streamers
     if args.streamers:

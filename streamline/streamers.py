@@ -283,7 +283,7 @@ STREAMERS = {
 # Add executors that need to be wrapped with AsyncExecutor
 STREAMERS.update(executors.EXECUTORS)
 
-def load_streamer(path, arg_list, options=None):
+def load_streamer(path, arg_list, options=None, print_help=False):
     kwargs = {}
     if options:
         kwargs.update(options)
@@ -296,31 +296,43 @@ def load_streamer(path, arg_list, options=None):
     if Streamer is None:
         raise ValueError('Invalid streamer: {}'.format(path))
 
+    if print_help:
+        streamer_parser = argparse.ArgumentParser(
+            prog=path,
+            add_help=False,
+            usage='streamline -s %(prog)s -- [options]',
+        )
+        if hasattr(Streamer, 'async_handler'):
+            AsyncExecutor.args(streamer_parser)
+        if hasattr(Streamer, 'args'):
+            Streamer.args(streamer_parser)
+        streamer_parser.print_help()
+        return None
 
     if hasattr(Streamer, 'async_handler'):
         # This is really a handler that needs wrapped with AsyncExecutor
         Executor = Streamer
         if Executor and hasattr(Executor, 'handle'):
             if hasattr(Executor, 'args'):
-                executor_parser = argparse.ArgumentParser()
-                Executor.args(executor_parser)
-                executor_args, arg_list = executor_parser.parse_known_args(arg_list)
+                streamer_parser = argparse.ArgumentParser(add_help=False)
+                Executor.args(streamer_parser)
+                executor_args, arg_list = streamer_parser.parse_known_args(arg_list)
                 kwargs.update(executor_args.__dict__)
-            executor = Executor(**kwargs).handle
+            else:
+                executor = Executor(**kwargs).handle
         else:
             executor = Executor
 
         # Now build the wrapper
-        ae_parser = argparse.ArgumentParser()
+        ae_parser = argparse.ArgumentParser(add_help=False)
         AsyncExecutor.args(ae_parser)
         ae_args, arg_list = ae_parser.parse_known_args(arg_list)
-        
         ae = AsyncExecutor(executor, **ae_args.__dict__)
         return ae.stream, arg_list
     else:
         if type(Streamer) == type:
             if hasattr(Streamer, 'args'):
-                streamer_parser = argparse.ArgumentParser()
+                streamer_parser = argparse.ArgumentParser(add_help=False)
                 Streamer.args(streamer_parser)
                 streamer_args, arg_list = streamer_parser.parse_known_args(arg_list)
                 kwargs.update(streamer_args.__dict__)
