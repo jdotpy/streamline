@@ -27,7 +27,7 @@ The simplest call specifies no streaming operations it just reads from stdin and
 By default streamline takes input from stdin and writes to stdout. This is very flexible as it makes the tool composible with other CLI tools. However you can also use the `--input` and `--output` flags to control output. Lets assume that you have a file with the same data you just sent in with printf:
 
 ```bash
-  $ streamline --input my_source_file.txt --output my_target_file.txt"
+  $ streamline --input my_source_file.txt --output my_target_file.txt
   $ cat my_target_file.txt
   foo
   bar
@@ -38,7 +38,7 @@ Now lets do something a little less useless. Lets use the "shell" streamer to ex
 ```bash
   $ printf "www.google.com\nslashdot.org" | streamline -s shell -- "nc -zv {value} 443"
   {"stdout": "", "stderr": "Connection to www.google.com 443 port [tcp/https] succeeded!\n", "exit_code": 0}
-{"stdout": "", "stderr": "Connection to slashdot.org 443 port [tcp/https] succeeded!\n", "exit_code": 0}
+  {"stdout": "", "stderr": "Connection to slashdot.org 443 port [tcp/https] succeeded!\n", "exit_code": 0}
 ```
 
 Streamline modules aim to provide all the useful information in object form as output can then be customized with other streaming modules. For exampe, to take the above output and get just the exit code that tells us whether the port is open we can just add the `--headers` option to prefix each output with the original input and the `--extract exit_code` option to set the value to the `exit_code` property of each result:
