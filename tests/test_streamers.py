@@ -141,7 +141,7 @@ def test_value_breakdown():
 
     # append mode
     do_streamer_test(
-        streamers.ValueBreakdown(append=True).stream,
+        streamers.ValueBreakdown(append_summary=True).stream,
         ['A', 'B', 'A', 'B', 'B', 'C', 'Z'],
         [
             'A', 'B', 'A', 'B', 'B', 'C', 'Z',

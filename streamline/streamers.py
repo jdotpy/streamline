@@ -260,9 +260,24 @@ async def split_lists(source):
 class ValueBreakdown(BaseStreamer):
     """ Gives summary stats either instead of the values or as an extra event at the end"""
 
-    def __init__(self, inputs=False, append=False):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--inputs',
+            action='store_true',
+            default=False,
+            help='Report the array of input values that had a particular result value',
+        )
+        parser.add_argument(
+            '--append-summary',
+            action='store_true',
+            default=False,
+            help='Instead of replacing values with the result breakdown, append a single entry at the end with the data',
+        )
+
+    def __init__(self, inputs=False, append_summary=False):
         self.inputs = inputs
-        self.append = append
+        self.append = append_summary
 
     async def stream(self, source):
         stats = OrderedDict()
