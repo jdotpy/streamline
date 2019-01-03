@@ -58,6 +58,71 @@ There are many modules available that do asynchronous jobs and transformations t
 
 ```bash
 $ streamline --help
+
+::extract::
+	Description: Filter out values that dont have a truthy result to a particular python expression
+	Example: streamline -s extract -- --selector exit_code
+
+::py::
+	Description: Translate each value by assigning it to the result of a python expression
+	Example: streamline -s py -- "value.upper()"
+
+::pyfilter::
+	Description: Filter out values that dont have a truthy result to a particular python expression
+	Example: streamline -s pyfilter -- "'foobar' in value"
+
+::truthy::
+	Description: Filter out values that are not truthy
+	Example: streamline -s truthy -- 
+
+::noop::
+	Description: No operation. Just for testing.
+	Example: streamline -s noop -- 
+
+::split::
+	Description: Take any values that are an array and treat each value of an array as a separate input 
+	Example: streamline -s split -- 
+
+::breakdown::
+	Description: Show a report of how many input values ended up with a particular result value
+	Example: streamline -s breakdown -- 
+
+::headers::
+	Description: Force each value to a string and prefix each with the original input value
+	Example: streamline -s headers -- 
+
+::filter_out_errors::
+	Description: Filter out any entries that have produced an error
+	Example: streamline -s filter_out_errors -- 
+
+::errors::
+	Description: Use the latest error on the entry as the value
+	Example: streamline -s errors -- 
+
+::buffer::
+	Description: Hold entries in memory until a certain number is reached (give no args to buffer all)
+	Example: streamline -s buffer -- --buffer 20
+
+::http::
+	Description: Use a template to execute an HTTP request for each value
+	Example: streamline -s http -- "https://{value}/"
+
+::ssh::
+	Description: Treat each value as a host to connect to. SSH in and run a command returning the output
+	Example: streamline -s ssh -- "uptime"
+
+::shell::
+	Description: Run a shell command for each value
+	Example: streamline -s shell -- "nc -zv {value} 22"
+
+::scp::
+	Description: Treat each value as a host to connect to. Copy a file to or from this host
+	Example: streamline -s scp -- "/tmp/file.txt" "{value}:/tmp/file.txt
+
+::sleep::
+	Description: Sleep for each entry making no change to its value
+	Example: streamline -s sleep -- 
+
 ```
 
 To get available options for a particular module run (substituting "http" for the module you're interested in):
