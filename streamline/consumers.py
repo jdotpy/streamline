@@ -1,4 +1,5 @@
 import json
+import os
 
 from . import utils 
 
@@ -15,6 +16,7 @@ class FileWriter():
         return utils.force_string(entry.value)
 
     async def stream(self, source):
+        output = ''
         async for entry in source:
             if '{input}' in self.target_name:
                 self.target_template = self.target_name
@@ -34,6 +36,9 @@ class FileWriter():
                 self.target.write(output)
             if hasattr(self.target, 'flush'):
                 self.target.flush()
+
+        if not output.endswith('\n') and os.environ.get('STREAMLINE_CLOSING_NEWLINE'):
+            self.target.write('\n')
 
         if self.target and hasattr(self.target, 'close'):
             self.target.close()

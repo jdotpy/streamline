@@ -1,6 +1,7 @@
 import asyncio
 import shlex
 import sys
+import os
 import io
 
 from streamline import cli
@@ -66,6 +67,9 @@ def test_noop_e2e():
 def test_whitepsace():
     # A call with no arguments should translate the input without having an effect
     do_cli_call('streamline', "\nFoo\nBar\n", "\nFoo\nBar\n")
+    os.environ['STREAMLINE_CLOSING_NEWLINE'] = 'true'
+    do_cli_call('streamline', "\nFoo\nBar", "\nFoo\nBar\n")
+    del os.environ['STREAMLINE_CLOSING_NEWLINE']
 
 def test_ae_e2e():
     do_cli_call('streamline -s sleep', "Foo\nBar", "Foo\nBar")
