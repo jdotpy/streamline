@@ -4,6 +4,7 @@ import logging
 import sys
 import os
 
+from . import utils
 from . import executors
 from . import generators
 from . import consumers
@@ -74,7 +75,7 @@ def streamline_command(args):
     Generator = generators.load_generator(args.generator)
     generator = Generator(args.input)
     Consumer = consumers.load_consumer(args.consumer)
-    consumer = Consumer(args.output, headers=args.headers)
+    consumer = Consumer(args.output)
 
     command_streamers = []
 
@@ -87,7 +88,7 @@ def streamline_command(args):
                 print('\n\n')
                 print('=' * 15 + ' Streamer::{} '.format(streamer_name) + '=' * 15)
                 print('\n')
-                streamers.load_streamer(streamer_name, extra_args, print_help=True)
+                load_streamer(streamer_name, extra_args, print_help=True)
         else:
             print('\n')
             print('=' * 15 + ' Streamers ' + '=' * 15)
@@ -107,7 +108,7 @@ def streamline_command(args):
     # Streamers
     if args.streamers:
         for streamer_name in args.streamers:
-            streamer, extra_args = streamers.load_streamer(streamer_name, extra_args)
+            streamer, extra_args = load_streamer(streamer_name, extra_args)
             command_streamers.append(streamer)
 
     # Shortcut - Python Exec
@@ -122,9 +123,72 @@ def streamline_command(args):
     if args.extract:
         command_streamers.append(streamers.ExtractionStreamer(selector=args.extract).stream)
 
+    # Shortcut - ErrorValues
+    if args.errors:
+        command_streamers.append(streamers.error_values)
+
+    # Shortcut - H3aders
+    if args.headers:
+        command_streamers.append(streamers.input_headers)
+
     future = pipe(generator.stream(), command_streamers, consumer=consumer.stream)
 
     # Loop until complete
     loop = asyncio.get_event_loop()
     task = asyncio.ensure_future(future, loop=loop)
     loop.run_until_complete(task)
+
+def load_streamer(path, arg_list, options=None, print_help=False):
+    kwargs = {}
+    if options:
+        kwargs.update(options)
+    if path is None:
+        return None
+    elif '.' in path:
+        Streamer = utils.import_obj(path)
+    else:
+        Streamer = streamers.STREAMERS.get(path)
+    if Streamer is None:
+        raise ValueError('Invalid streamer: {}'.format(path))
+
+    if print_help:
+        streamer_parser = argparse.ArgumentParser(
+            prog=path,
+            add_help=False,
+            usage='streamline -s %(prog)s -- [options]',
+        )
+        if hasattr(Streamer, 'async_handler'):
+            streamers.AsyncExecutor.args(streamer_parser)
+        if hasattr(Streamer, 'args'):
+            Streamer.args(streamer_parser)
+        streamer_parser.print_help()
+        return None
+
+    if hasattr(Streamer, 'async_handler'):
+        # This is really a handler that needs wrapped with AsyncExecutor
+        Executor = Streamer
+        if Executor and hasattr(Executor, 'handle'):
+            if hasattr(Executor, 'args'):
+                streamer_parser = argparse.ArgumentParser(add_help=False)
+                Executor.args(streamer_parser)
+                executor_args, arg_list = streamer_parser.parse_known_args(arg_list)
+                kwargs.update(executor_args.__dict__)
+            executor = Executor(**kwargs).handle
+        else:
+            executor = Executor
+
+        # Now build the wrapper
+        ae_parser = argparse.ArgumentParser(add_help=False)
+        streamers.AsyncExecutor.args(ae_parser)
+        ae_args, arg_list = ae_parser.parse_known_args(arg_list)
+        ae = streamers.AsyncExecutor(executor, **ae_args.__dict__)
+        return ae.stream, arg_list
+    else:
+        if type(Streamer) == type:
+            if hasattr(Streamer, 'args'):
+                streamer_parser = argparse.ArgumentParser(add_help=False)
+                Streamer.args(streamer_parser)
+                streamer_args, arg_list = streamer_parser.parse_known_args(arg_list)
+                kwargs.update(streamer_args.__dict__)
+            return Streamer(**kwargs).stream, arg_list
+        return Streamer, arg_list

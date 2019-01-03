@@ -12,9 +12,10 @@ class FileReader():
         self.source = None
 
     async def stream(self):
+        factory = entries.EntryFactory()
         source = utils.get_file_io(self.source_name)
         for index, line in enumerate(source):
-            yield entries.Entry(line.rstrip(self.DELIMITER), index=index)
+            yield factory(line.rstrip(self.DELIMITER))
 
         if hasattr(source, 'close'):
             source.close()

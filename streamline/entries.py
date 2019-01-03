@@ -1,9 +1,23 @@
+class EntryFactory():
+    def __init__(self, error_value=None):
+        self.error_value = error_value
+        self.index = 0
+
+    def __call__(self, value):
+        entry = Entry(
+            value,
+            error_value=self.error_value,
+            index=self.index
+        )
+        self.index += 1
+        return entry
 
 class Entry():
-    def __init__(self, value, index=None):
+    def __init__(self, value, index=None, error_value=None):
         self.index = index
         self.values = [value]
         self.errors = []
+        self.error_value = error_value
 
     @property
     def original_value(self):
@@ -17,7 +31,7 @@ class Entry():
 
     def error(self, e):
         self.errors.append(e)
-        self.value = None
+        self.value = self.error_value
 
     value = property(get_value, set_value)
 

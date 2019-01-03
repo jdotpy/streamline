@@ -5,22 +5,14 @@ from . import utils
 class FileWriter():
     DELIMITER = '\n'
 
-    def __init__(self, target_name, force_flush=False, headers=False):
+    def __init__(self, target_name):
         self.target_name = target_name
-        self.force_flush = force_flush
-        self.headers = headers
-
         self.target = None
         self.target_template = None
         self.first_written = False
 
     def _output_value(self, entry):
-        value = entry.value
-        if not isinstance(value, str):
-            value = json.dumps(value)
-        if self.headers:
-            value = '{}: {}'.format(entry.original_value, value)
-        return value
+        return utils.force_string(entry.value)
 
     async def stream(self, source):
         async for entry in source:
@@ -40,7 +32,7 @@ class FileWriter():
                     target_file.write(output)
             else:
                 self.target.write(output)
-            if self.force_flush and hasattr(self.target, 'flush'):
+            if hasattr(self.target, 'flush'):
                 self.target.flush()
 
         if self.target and hasattr(self.target, 'close'):

@@ -1,4 +1,5 @@
 from importlib import import_module
+import json
 import sys
 import os
 
@@ -49,8 +50,18 @@ def truthy(entries):
 
 def arg_help(description, example=None):
     def decorator(streamer):
-        streamer._arg_description = description
-        streamer._arg_example = example
+        if description is not None:
+            streamer._arg_description = description
+        if example is not None:
+            streamer._arg_example = example
         return streamer
     return decorator
 
+def force_string(value):
+    if isinstance(value, str):
+        return value
+    try:
+        value = json.dumps(value)
+    except Exception as e:
+        value = str(value)
+    return value

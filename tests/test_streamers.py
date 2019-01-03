@@ -1,19 +1,25 @@
 from streamline import streamers
 from streamline.core import static_pipe, sync_exec
-from streamline.entries import entry_wrap, entry_unwrap
+from streamline.entries import entry_wrap, entry_unwrap, Entry
 
 import asyncio
+import re
 
 
-def do_streamer_test(streamer, inputs, expected_outputs, options=None):
-    entries = entry_wrap(inputs)
+def do_streamer_test(streamer, inputs, expected_outputs=None, options=None, wrap=True):
+    if wrap:
+        entries = entry_wrap(inputs)
+    else:
+        entries = inputs
 
     # Initialize streamer and queue up task
     future = static_pipe(streamer, entries)
     result = sync_exec(future)
 
     outputs = entry_unwrap(result)
-    assert outputs == expected_outputs
+    if expected_outputs:
+        assert outputs == expected_outputs
+    return outputs
 
 def test_extraction_streamer():
     # Basic single-depth
@@ -147,3 +153,46 @@ def test_value_breakdown():
             ],
         ],
     )
+
+def test_input_headers():
+    a = Entry('a')
+    a.value = 1
+    b = Entry('b')
+    b.value = {'label': 'second entry'}
+    c = Entry('c')
+    c.value = set(['third entry'])
+
+    do_streamer_test(
+        streamers.input_headers,
+        [a, b, c],
+        [
+            'a: 1',
+            'b: {"label": "second entry"}',
+            'c: {\'third entry\'}',
+        ],
+        wrap=False,
+    )
+
+def test_error_values():
+    a = Entry('a', error_value='custom_error_value')
+    b = Entry('b', error_value='custom_error_value')
+    c = Entry('c', error_value='custom_error_value')
+    try:
+        raise ValueError('Failure for a')
+    except Exception as e:
+        a.error(e)
+
+    b_error = ValueError('Failure for b')
+    b.error(b_error)
+    outputs = do_streamer_test(streamers.error_values, [a, b, c], wrap=False)
+    assert re.match('.*File.*test_streamers.py.*', outputs[0]) is not None
+    assert outputs[1] == b_error
+    assert outputs[2] == 'c'
+
+def test_buffer():
+    do_streamer_test(
+        streamers.StreamingBuffer().stream,
+        [1,2,3,4,5],
+        [1,2,3,4,5],
+    )
+

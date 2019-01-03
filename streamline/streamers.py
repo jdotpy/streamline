@@ -133,7 +133,7 @@ class AsyncExecutor():
         helpful for controlling resource usage on the host machine or remote systems used by the job. For this reason
         I'm re-implementing a worker-style executor pool which could be used with jobs that are threaded or async.
     """
-    DEFAULT_WORKERS = 5
+    DEFAULT_WORKERS = 20
 
     @classmethod
     def args(cls, parser):
@@ -141,7 +141,7 @@ class AsyncExecutor():
             '-w', '--workers',
             type=int,
             help='Number of concurrent workers for execution modules',
-            default=10,
+            default=cls.DEFAULT_WORKERS,
         )
         parser.add_argument(
             '-p', '--show-progress',
@@ -150,13 +150,11 @@ class AsyncExecutor():
             default=False,
         )
 
-    def __init__(self, executor=None, show_progress=False, stacktraces=False, workers=DEFAULT_WORKERS, loop=None):
+    def __init__(self, executor=None, show_progress=False, workers=DEFAULT_WORKERS, loop=None):
         self.executor = executor
-        self.input_queue = asyncio.Queue()
         self.output_queue = asyncio.Queue()
         self.show_progress = show_progress
         self.worker_count = workers or self.DEFAULT_WORKERS
-        self.stacktraces = stacktraces
 
         # State data
         self.entry_count = 0
@@ -174,7 +172,7 @@ class AsyncExecutor():
              total=self.entry_count,
              percent_done=int(self.complete_count / self.entry_count * 100),
              running=self.active_count,
-             pending=self.input_queue.qsize(),
+             pending='??'
          ))
          if newline:
              # Finish with a newline
@@ -184,24 +182,19 @@ class AsyncExecutor():
         self.complete_count += 1
         self.output_queue.put_nowait(entry)
 
-    def _is_complete(self):
-        return self.complete_count == self.entry_count
-
     async def stream(self, source):
-        # Enqueue all work tasks
-        async for entry in source:
-            self.entry_count += 1
-            self.input_queue.put_nowait(entry)
-        self.all_enqueued = True
-
+        self.source = source
         # Start workers
         workers = []
         for i in range(self.worker_count):
             worker = self.loop.create_task(self._worker())
             workers.append(worker)
-            asyncio.ensure_future(worker)
 
-        while not self._is_complete() or self.output_queue.qsize():
+        all_workers = asyncio.gather(*workers)
+        asyncio.ensure_future(all_workers)
+        while True:
+            if all_workers.done() and self.output_queue.qsize() == 0:
+                break
             try:
                 entry = await asyncio.wait_for(self.output_queue.get(), timeout=.1)
             except asyncio.TimeoutError:
@@ -214,12 +207,10 @@ class AsyncExecutor():
     async def _worker(self):
         while True:
             try:
-                entry = await asyncio.wait_for(self.input_queue.get(), timeout=.1)
-            except asyncio.TimeoutError:
-                if self.input_queue.qsize() == 0 and self.all_enqueued:
-                    return
-                else:
-                    continue
+                entry = await self.source.__anext__()
+            except StopAsyncIteration:
+                return
+            self.entry_count += 1
             self.active_count += 1
             try:
                 if asyncio.iscoroutinefunction(self.executor):
@@ -230,12 +221,7 @@ class AsyncExecutor():
                     entry.value = await self.loop.run_in_executor(None, executor_wrapper)
             except Exception as e:
                 entry.error(e)
-                if self.stacktraces:
-                    result = '{}'.format(traceback.format_exc())
-                else:
-                    result = str(e)
             self._save_result(entry)
-            self.input_queue.task_done()
             self.active_count -= 1
 
 @arg_help('No operation. Just for testing.')
@@ -304,6 +290,66 @@ class ValueBreakdown(BaseStreamer):
             for wrapped_value in entry_wrap(stats.values()):
                 yield wrapped_value
 
+@arg_help('Force each value to a string and prefix each with the original input value')
+async def input_headers(source):
+    async for entry in source:
+        value = utils.force_string(entry.value)
+        header = utils.force_string(entry.original_value)
+        entry.value = '{}: {}'.format(header, value)
+        yield entry
+
+@arg_help('Filter out any entries that have produced an error')
+async def filter_out_errors(source):
+    async for entry in source:
+        if not entry.errors:
+            yield entry
+
+@arg_help('Use the latest error on the entry as the value')
+async def error_values(source):
+    async for entry in source:
+        if not entry.errors:
+            yield entry
+            continue
+
+        error = entry.errors[-1]
+        if isinstance(error, Exception) and getattr(error, '__traceback__', None):
+            error = '\n'.join(traceback.format_tb(error.__traceback__))
+        entry.value = error
+        yield entry
+
+@arg_help('Hold entries in memory until a certain number is reached (give no args to buffer all)', example='--buffer 20')
+class StreamingBuffer(BaseStreamer):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--buffer',
+            default='all',
+            help='Number of entries to buffer (blank for all)',
+        )
+
+    def initialize(self):
+        try:
+            self.buffer_size = int(self.options['buffer'])
+        except Exception as e:
+            self.buffer_size = None
+
+    async def stream(self, source):
+        buffer_list = []
+        async for entry in source:
+            buffer_list.append(entry)
+            if self.buffer_size is None:
+                # We want to accrue all
+                continue
+            elif buffer_list >= self.buffer_size:
+                # Empty the buffer
+                for entry in buffer_list:
+                    yield entry
+                buffer_list = []
+
+        # Drain any remaining
+        for entry in buffer_list:
+            yield entry
+
 
 STREAMERS = {
     'extract': ExtractionStreamer,
@@ -313,65 +359,10 @@ STREAMERS = {
     'noop': noop,
     'split': split_lists,
     'breakdown': ValueBreakdown,
-
-    # We don't directly expose the async executor because it requires the module loading
-    #'exec': AsyncExecutor,
-    
+    'headers': input_headers,
+    'filter_out_errors': filter_out_errors,
+    'errors': error_values,
+    'buffer': StreamingBuffer,
 }
 # Add executors that need to be wrapped with AsyncExecutor
 STREAMERS.update(executors.EXECUTORS)
-
-def load_streamer(path, arg_list, options=None, print_help=False):
-    kwargs = {}
-    if options:
-        kwargs.update(options)
-    if path is None:
-        return None
-    elif '.' in path:
-        Streamer = utils.import_obj(path)
-    else:
-        Streamer = STREAMERS.get(path)
-    if Streamer is None:
-        raise ValueError('Invalid streamer: {}'.format(path))
-
-    if print_help:
-        streamer_parser = argparse.ArgumentParser(
-            prog=path,
-            add_help=False,
-            usage='streamline -s %(prog)s -- [options]',
-        )
-        if hasattr(Streamer, 'async_handler'):
-            AsyncExecutor.args(streamer_parser)
-        if hasattr(Streamer, 'args'):
-            Streamer.args(streamer_parser)
-        streamer_parser.print_help()
-        return None
-
-    if hasattr(Streamer, 'async_handler'):
-        # This is really a handler that needs wrapped with AsyncExecutor
-        Executor = Streamer
-        if Executor and hasattr(Executor, 'handle'):
-            if hasattr(Executor, 'args'):
-                streamer_parser = argparse.ArgumentParser(add_help=False)
-                Executor.args(streamer_parser)
-                executor_args, arg_list = streamer_parser.parse_known_args(arg_list)
-                kwargs.update(executor_args.__dict__)
-            executor = Executor(**kwargs).handle
-        else:
-            executor = Executor
-
-        # Now build the wrapper
-        ae_parser = argparse.ArgumentParser(add_help=False)
-        AsyncExecutor.args(ae_parser)
-        ae_args, arg_list = ae_parser.parse_known_args(arg_list)
-        ae = AsyncExecutor(executor, **ae_args.__dict__)
-        return ae.stream, arg_list
-    else:
-        if type(Streamer) == type:
-            if hasattr(Streamer, 'args'):
-                streamer_parser = argparse.ArgumentParser(add_help=False)
-                Streamer.args(streamer_parser)
-                streamer_args, arg_list = streamer_parser.parse_known_args(arg_list)
-                kwargs.update(streamer_args.__dict__)
-            return Streamer(**kwargs).stream, arg_list
-        return Streamer, arg_list

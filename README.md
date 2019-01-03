@@ -19,7 +19,7 @@ The sequence of operations in an invocation:
 The simplest call specifies no streaming operations it just reads from stdin and writes to stdout exactly what was written:
 
 ```bash
-  $ printf "foo\nbar" | streamline"
+  $ printf "foo\nbar" | streamline
   foo
   bar
 ```
@@ -54,16 +54,16 @@ Everything before the `--` is an option for the streamline command and options a
 
 ## Built-in Modules
 
-There are many modules available that do asynchronous jobs and transformations to input. To get available options for a particular module run (substituting "http" for the module you're interested in):
+There are many modules available that do asynchronous jobs and transformations to input.  To see all available modules use the main help option to list them with examples:
+
+```bash
+$ streamline --help
+```
+
+To get available options for a particular module run (substituting "http" for the module you're interested in):
 
 ```bash
 streamline -s http --help
-```
-
-To see all available modules use the main help option to list them with examples:
-
-```bash
-streamline --help
 ```
 
 
