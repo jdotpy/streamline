@@ -62,7 +62,11 @@ def do_cli_call(command, input_text, expected_output):
 def test_noop_e2e():
     # A call with no arguments should translate the input without having an effect
     do_cli_call('streamline', "Foo\nBar", "Foo\nBar")
-    
+
+def test_whitepsace():
+    # A call with no arguments should translate the input without having an effect
+    do_cli_call('streamline', "\nFoo\nBar\n", "\nFoo\nBar\n")
+
 def test_ae_e2e():
     do_cli_call('streamline -s sleep', "Foo\nBar", "Foo\nBar")
 

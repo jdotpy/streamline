@@ -14,8 +14,15 @@ class FileReader():
     async def stream(self):
         factory = entries.EntryFactory()
         source = utils.get_file_io(self.source_name)
+
         for index, line in enumerate(source):
+            ending_delim = line.endswith(self.DELIMITER)
+            if ending_delim:
+                line = line.rstrip(self.DELIMITER)
             yield factory(line.rstrip(self.DELIMITER))
+
+        if ending_delim:
+            yield factory('')
 
         if hasattr(source, 'close'):
             source.close()
