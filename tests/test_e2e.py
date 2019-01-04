@@ -75,6 +75,10 @@ def test_whitespace():
 def test_ae_e2e():
     do_cli_call('streamline -s sleep', "Foo\nBar", "Foo\nBar")
 
+def test_optional_flag():
+    do_cli_call('streamline py -- "value.upper()"', "Foo\nBar", "FOO\nBAR")
+    do_cli_call('streamline -s py -- "value.upper()"', "Foo\nBar", "FOO\nBAR")
+
 def test_ae_with_args_():
     do_cli_call(
         'streamline -s http extract -- "https://{value}/" --selector "code"',
@@ -83,7 +87,7 @@ def test_ae_with_args_():
     )
 
 def test_headers():
-    do_cli_call('streamline --python "value.upper()" --headers', "Foo\nBar", "Foo: FOO\nBar: BAR")
+    do_cli_call('streamline py headers -- "value.upper()"', "Foo\nBar", "Foo: FOO\nBar: BAR")
 
 def test_imported_executor():
     do_cli_call(

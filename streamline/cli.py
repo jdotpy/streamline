@@ -24,12 +24,6 @@ def streamline_command(args):
         default=False,
     )
     cmd_parser.add_argument(
-        '--show-input',
-        help='Show original input value instead of the transformed value (useful with --filter)',
-        action='store_true',
-        default=False,
-    )
-    cmd_parser.add_argument(
         '--generator',
         help='Entry Generator Module',
         default='file',
@@ -41,40 +35,17 @@ def streamline_command(args):
     )
     cmd_parser.add_argument(
         '-s', '--streamers',
-        help='Additional streamers to apply',
+        help='Additional streamers to apply (-s is optional)',
         nargs='*',
     )
     cmd_parser.add_argument(
-        '-f', '--filter',
-        help='Python filter expression (e.g. "\'foo\' in value")',
-    )
-    cmd_parser.add_argument(
-        '-x', '--python',
-        help='Python transformation expression (e.g. "value = value.replace")',
-    )
-    cmd_parser.add_argument(
-        '-d', '--headers',
-        action='store_true',
-        help='Prefix output with entry name',
-        default=False,
-    )
-    cmd_parser.add_argument(
-        '-e', '--extract',
-        help='Extract a part of the result by dot path (e.g. result.foobar)',
-        default=None,
-    )
-    cmd_parser.add_argument(
-        '--errors',
-        action='store_true',
-        default=False,
-        help='Extract any errors on entries use that as their value',
-    )
-    cmd_parser.add_argument(
-        '--help',
+        '-h', '--help',
         action='store_true',
         default=False,
         help='Print help',
     )
+    if args and '-s' not in args:
+        args.insert(0, '-s'),
     args, extra_args = cmd_parser.parse_known_args(args)
 
     # Setup input/output modules
@@ -116,26 +87,6 @@ def streamline_command(args):
         for streamer_name in args.streamers:
             streamer, extra_args = load_streamer(streamer_name, extra_args)
             command_streamers.append(streamer)
-
-    # Shortcut - Python Exec
-    if args.python:
-        command_streamers.append(streamers.PyExecTransform(code=args.python).stream)
-
-    # Shortcut - Pyton Filters
-    if args.filter:
-        command_streamers.append(streamers.PyExecFilter(code=args.filter).stream)
-
-    # Shortcut - Extractor
-    if args.extract:
-        command_streamers.append(streamers.ExtractionStreamer(selector=args.extract).stream)
-
-    # Shortcut - ErrorValues
-    if args.errors:
-        command_streamers.append(streamers.error_values)
-
-    # Shortcut - H3aders
-    if args.headers:
-        command_streamers.append(streamers.input_headers)
 
     # Ensure we don't have any extra arguments
     if extra_args:
