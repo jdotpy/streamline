@@ -47,8 +47,6 @@ def streamline_command(args):
     if args and '-s' not in args:
         args.insert(0, '-s'),
     args, extra_args = cmd_parser.parse_known_args(args)
-    if extra_args and extra_args[0] == '--':
-        extra_args = extra_args[1:]
 
     # Setup input/output modules
     Generator = generators.load_generator(args.generator)
@@ -103,6 +101,8 @@ def streamline_command(args):
     loop.run_until_complete(task)
 
 def load_streamer(path, arg_list, options=None, print_help=False):
+    if arg_list and arg_list[0] == '--':
+        arg_list = arg_list[1:]
     kwargs = {}
     if options:
         kwargs.update(options)

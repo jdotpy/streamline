@@ -102,3 +102,10 @@ def test_imported_streamer():
         "1\n2",
         "3\n4",
     )
+
+def test_duplicate_module():
+    do_cli_call(
+        'streamline -s json extract extract -- --selector "foo" -- --selector "bar"',
+        '{"foo": {"bar": 1}}\n{"foo": {"bar": 2}}',
+        '1\n2',
+    )
