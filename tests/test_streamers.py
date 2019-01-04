@@ -192,7 +192,7 @@ def test_error_values():
     b_error = ValueError('Failure for b')
     b.error(b_error)
     outputs = do_streamer_test(streamers.error_values, [a, b, c], wrap=False)
-    assert re.match('.*File.*test_streamers.py.*', outputs[0]) is not None
+    assert re.match('^ValueError: Failure for a.*File.*test_streamers.py.*', outputs[0], re.S +re.MULTILINE) is not None
     assert outputs[1] == b_error
     assert outputs[2] == 'c'
 

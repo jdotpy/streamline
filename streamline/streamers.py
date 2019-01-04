@@ -163,6 +163,7 @@ class AsyncExecutor():
         self.all_enqueued = False
         self.loop = loop or asyncio.get_event_loop()
 
+
     def _show_progress(self, newline=False):
          if not self.show_progress:
              return
@@ -214,17 +215,11 @@ class AsyncExecutor():
             self.active_count += 1
             try:
                 if asyncio.iscoroutinefunction(self.executor):
-                    try:
-                        entry.value = await self.executor(entry.value)
-                    except Exception as e:
-                        entry.error(e)
+                    entry.value = await self.executor(entry.value)
                 else:
                     def executor_wrapper():
                         return self.executor(entry.value)
-                    try:
-                        entry.value = await self.loop.run_in_executor(None, executor_wrapper)
-                    except Exception as e:
-                        entry.error(e)
+                    entry.value = await self.loop.run_in_executor(None, executor_wrapper)
             except Exception as e:
                 entry.error(e)
             self._save_result(entry)
@@ -337,7 +332,11 @@ async def error_values(source):
 
         error = entry.errors[-1]
         if isinstance(error, Exception) and getattr(error, '__traceback__', None):
-            error = '\n'.join(traceback.format_tb(error.__traceback__))
+            error = '{}: {}\n{}'.format(
+                str(type(error).__name__),
+                str(error),
+                '\n'.join(traceback.format_tb(error.__traceback__))       
+            )
         entry.value = error
         yield entry
 
