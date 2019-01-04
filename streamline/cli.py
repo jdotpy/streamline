@@ -131,6 +131,11 @@ def streamline_command(args):
     if args.headers:
         command_streamers.append(streamers.input_headers)
 
+    # Ensure we don't have any extra arguments
+    if extra_args:
+        sys.stderr.write('Extra arguments found: {}\n'.format(' '.join(extra_args)))
+        sys.exit(2)
+
     future = pipe(generator.stream(), command_streamers, consumer=consumer.stream)
 
     # Loop until complete

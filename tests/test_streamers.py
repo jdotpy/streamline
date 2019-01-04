@@ -196,3 +196,31 @@ def test_buffer():
         [1,2,3,4,5],
     )
 
+def test_strip():
+    # Defaults
+    do_streamer_test(
+        streamers.StripWhitespace().stream,
+        [1,' 2 ','',' ', '5'],
+        [1,'2','5'],
+    )
+    # Keep Blanks
+    do_streamer_test(
+        streamers.StripWhitespace(keep_blank=True).stream,
+        [1,' 2 ','',' ', '5'],
+        [1,'2','','','5'],
+    )
+
+def test_head():
+    # Defaults
+    do_streamer_test(
+        streamers.HeadStreamer().stream,
+        [1,2,3,4,5],
+        [1],
+    )
+
+    # With Count
+    do_streamer_test(
+        streamers.HeadStreamer(count=4).stream,
+        [1,2,3,4,5],
+        [1,2,3,4],
+    )

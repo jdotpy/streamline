@@ -214,11 +214,17 @@ class AsyncExecutor():
             self.active_count += 1
             try:
                 if asyncio.iscoroutinefunction(self.executor):
-                    entry.value = await self.executor(entry.value)
+                    try:
+                        entry.value = await self.executor(entry.value)
+                    except Exception as e:
+                        entry.error(e)
                 else:
                     def executor_wrapper():
                         return self.executor(entry.value)
-                    entry.value = await self.loop.run_in_executor(None, executor_wrapper)
+                    try:
+                        entry.value = await self.loop.run_in_executor(None, executor_wrapper)
+                    except Exception as e:
+                        entry.error(e)
             except Exception as e:
                 entry.error(e)
             self._save_result(entry)
@@ -365,6 +371,50 @@ class StreamingBuffer(BaseStreamer):
         for entry in buffer_list:
             yield entry
 
+@arg_help('Strip surrounding whitespace from each string entry, removing entries that are only whitespace', example='--buffer 20')
+class StripWhitespace(BaseStreamer):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--keep-blank',
+            default=False,
+            help='Dont remove blank entries',
+        )
+
+    async def stream(self, source):
+        keep_blank = bool(self.options.get('keep_blank', False))
+        async for entry in source:
+            value = entry.value
+            if not isinstance(value, str):
+                yield entry
+                continue
+
+            value = value.strip()
+            if value == '' and not keep_blank:
+                continue
+            if value != entry.value:
+                entry.value = value
+            yield entry
+
+@arg_help('Only take the first X entries (Default 1)', example='--count 20')
+class HeadStreamer(BaseStreamer):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--count',
+            default=1,
+            type=int,
+            help='How many entries to keep',
+        )
+
+    async def stream(self, source):
+        max_count = self.options.get('count', 1)
+        count = 0
+        async for entry in source:
+            yield entry
+            count += 1
+            if count >= max_count:
+                break
 
 STREAMERS = {
     'extract': ExtractionStreamer,
@@ -378,6 +428,8 @@ STREAMERS = {
     'filter_out_errors': filter_out_errors,
     'errors': error_values,
     'buffer': StreamingBuffer,
+    'strip': StripWhitespace,
+    'head': HeadStreamer,
 }
 # Add executors that need to be wrapped with AsyncExecutor
 STREAMERS.update(executors.EXECUTORS)
