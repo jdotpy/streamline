@@ -4,11 +4,9 @@ from . import entries
 class FileReader():
     DELIMITER = '\n'
 
-    def __init__(self, source_name, force_flush=False):
+    def __init__(self, source_name, keep_trailing_newline=False):
         self.source_name = source_name
-        self.force_flush = force_flush
-
-        self.first_written = False
+        self.keep_trailing_newline = keep_trailing_newline
         self.source = None
 
     async def stream(self):
@@ -21,7 +19,7 @@ class FileReader():
                 line = line.rstrip(self.DELIMITER)
             yield factory(line.rstrip(self.DELIMITER))
 
-        if ending_delim:
+        if ending_delim and self.keep_trailing_newline:
             yield factory('')
 
         if hasattr(source, 'close'):

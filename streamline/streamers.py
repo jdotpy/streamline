@@ -244,6 +244,9 @@ async def truthy(source):
 @arg_help('Take json strings and parse them into objects so other streamers can inspect attributes')
 async def json_parser(source):
     async for entry in source:
+        if not isinstance(entry.value, str):
+            yield entry
+            continue
         try:
             entry.value = json.loads(entry.value)
         except Exception as e:
@@ -428,6 +431,7 @@ STREAMERS = {
     'filter_out_errors': filter_out_errors,
     'errors': error_values,
     'buffer': StreamingBuffer,
+    'json': json_parser,
     'strip': StripWhitespace,
     'head': HeadStreamer,
 }

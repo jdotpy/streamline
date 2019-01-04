@@ -18,6 +18,12 @@ def streamline_command(args):
     cmd_parser.add_argument('--input', help='Set source (Default stdin)', default='-')
     cmd_parser.add_argument('--output', help='Set target of output (Default stdout)', default='-')
     cmd_parser.add_argument(
+        '-k', '--keep-trailing-newline',
+        help='Dont automatically trim the ending newline character',
+        action='store_true',
+        default=False,
+    )
+    cmd_parser.add_argument(
         '--show-input',
         help='Show original input value instead of the transformed value (useful with --filter)',
         action='store_true',
@@ -73,7 +79,7 @@ def streamline_command(args):
 
     # Setup input/output modules
     Generator = generators.load_generator(args.generator)
-    generator = Generator(args.input)
+    generator = Generator(args.input, keep_trailing_newline=args.keep_trailing_newline)
     Consumer = consumers.load_consumer(args.consumer)
     consumer = Consumer(args.output)
 

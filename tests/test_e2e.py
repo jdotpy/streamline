@@ -64,9 +64,10 @@ def test_noop_e2e():
     # A call with no arguments should translate the input without having an effect
     do_cli_call('streamline', "Foo\nBar", "Foo\nBar")
 
-def test_whitepsace():
+def test_whitespace():
     # A call with no arguments should translate the input without having an effect
-    do_cli_call('streamline', "\nFoo\nBar\n", "\nFoo\nBar\n")
+    do_cli_call('streamline', "\nFoo\nBar\n", "\nFoo\nBar")
+    do_cli_call('streamline -k', "\nFoo\nBar\n", "\nFoo\nBar\n")
     os.environ['STREAMLINE_CLOSING_NEWLINE'] = 'true'
     do_cli_call('streamline', "\nFoo\nBar", "\nFoo\nBar\n")
     del os.environ['STREAMLINE_CLOSING_NEWLINE']
