@@ -57,6 +57,13 @@ def test_extraction_streamer():
         [[1,4]],
     )
 
+    # Test for stupid things
+    do_streamer_test(
+        streamers.ExtractionStreamer(selector='bar[0].doodle').stream,
+        [{'foo': 1}, {'foo': 2}],
+        [None,None],
+    )
+
 def test_py_exec_transform():
     # Expression
     do_streamer_test(
