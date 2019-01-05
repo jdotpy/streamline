@@ -1,6 +1,8 @@
 from . import utils 
 from . import entries
 
+import csv
+
 class FileReader():
     DELIMITER = '\n'
 
@@ -25,8 +27,25 @@ class FileReader():
         if hasattr(source, 'close'):
             source.close()
 
+class CSVReader():
+    def __init__(self, source_name, **kwargs):
+        self.source_name = source_name
+        self.source = None
+
+    async def stream(self):
+        factory = entries.EntryFactory()
+        source = utils.get_file_io(self.source_name)
+        reader = csv.DictReader(source)
+
+        for row in reader:
+            yield factory(row)
+
+        if hasattr(source, 'close'):
+            source.close()
+
 GENERATORS = {
     'file': FileReader,
+    'csv': CSVReader,
 }
 
 def load_generator(path):
