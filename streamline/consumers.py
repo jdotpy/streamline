@@ -8,10 +8,19 @@ def stringify_all(source):
     return [utils.force_string(v) for v in source]
 
 class FileWriter():
+    DEFAULT_OUTPUT = '-'
     DELIMITER = '\n'
 
-    def __init__(self, target_name):
-        self.target_name = target_name
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--output',
+            default=cls.DEFAULT_OUTPUT,
+            help='Set target of output (Default stdout)',
+        )
+
+    def __init__(self, output=None):
+        self.target_name = output
         self.target = None
         self.target_template = None
         self.first_written = False
@@ -48,8 +57,21 @@ class FileWriter():
             self.target.close()
 
 class CSVWriter():
-    def __init__(self, target_name):
-        self.target_name = target_name
+    DEFAULT_OUTPUT = '-'
+
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument('--output', help='Set target of output (Default stdout)', default=cls.DEFAULT_OUTPUT)
+        parser.add_argument(
+            '--input-column',
+            action='store_true',
+            default=False,
+            help='Automatically add a column for input value',
+        )
+
+    def __init__(self, output=DEFAULT_OUTPUT, input_column=False):
+        self.target_name = output
+        self.input_column = input_column
 
     def _parse_fields(self, entry):
         if not isinstance(entry.value, dict):
@@ -66,7 +88,9 @@ class CSVWriter():
             return [''] * len(fields)
 
         values = [entry.value.get(field, '') for field in fields]
-        return values
+        if self.input_column:
+            values.insert(0, entry.original_value)
+        return stringify_all(values)
 
     async def stream(self, source):
         self.target = utils.get_file_io(self.target_name, write=True)
@@ -81,7 +105,10 @@ class CSVWriter():
                 if fields is None:
                     writer.writerow(['input', 'value'])
                 else:
-                    writer.writerow(fields)
+                    header = list(fields)
+                    if self.input_column:
+                        header.insert(0, 'input')
+                    writer.writerow(header)
                 header_written = True
 
             # Write values

@@ -15,14 +15,6 @@ logger = logging.getLogger(__file__)
 
 def streamline_command(args):
     cmd_parser = argparse.ArgumentParser(prog='streamline', add_help=False)
-    cmd_parser.add_argument('--input', help='Set source (Default stdin)', default='-')
-    cmd_parser.add_argument('--output', help='Set target of output (Default stdout)', default='-')
-    cmd_parser.add_argument(
-        '-k', '--keep-trailing-newline',
-        help='Dont automatically trim the ending newline character',
-        action='store_true',
-        default=False,
-    )
     cmd_parser.add_argument(
         '--generator',
         help='Entry Generator Module',
@@ -48,11 +40,32 @@ def streamline_command(args):
         args.insert(0, '-s'),
     args, extra_args = cmd_parser.parse_known_args(args)
 
-    # Setup input/output modules
+    # Load Generator
     Generator = generators.load_generator(args.generator)
-    generator = Generator(args.input, keep_trailing_newline=args.keep_trailing_newline)
+    generator_options = {}
+    if hasattr(Generator, 'args'):
+        generator_parser = argparse.ArgumentParser(
+            prog=args.generator,
+            add_help=False,
+            usage='streamline [streamers...] --generator %(prog)s [generator options]',
+        )
+        Generator.args(generator_parser)
+        generator_args, extra_args = generator_parser.parse_known_args(extra_args)
+        generator_options.update(generator_args.__dict__)
+    generator = Generator(**generator_options)
+
     Consumer = consumers.load_consumer(args.consumer)
-    consumer = Consumer(args.output)
+    consumer_options = {}
+    if hasattr(Consumer, 'args'):
+        consumer_parser = argparse.ArgumentParser(
+            prog=args.consumer,
+            add_help=False,
+            usage='streamline [streamers...] --consumer %(prog)s [generator options]',
+        )
+        Consumer.args(consumer_parser)
+        consumer_args, extra_args = consumer_parser.parse_known_args(extra_args)
+        consumer_options.update(consumer_args.__dict__)
+    consumer = Consumer(**consumer_options)
 
     command_streamers = []
 

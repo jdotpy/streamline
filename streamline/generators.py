@@ -5,8 +5,24 @@ import csv
 
 class FileReader():
     DELIMITER = '\n'
+    DEFAULT_SOURCE = '-'
 
-    def __init__(self, source_name, keep_trailing_newline=False):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--input',
+            default=cls.DEFAULT_SOURCE,
+            dest='source_name',
+            help='Set source (Default stdin)',
+        )
+        parser.add_argument(
+            '-k', '--keep-trailing-newline',
+            help='Dont automatically trim the ending newline character',
+            action='store_true',
+            default=False,
+        )
+
+    def __init__(self, source_name=DEFAULT_SOURCE, keep_trailing_newline=False):
         self.source_name = source_name
         self.keep_trailing_newline = keep_trailing_newline
         self.source = None
@@ -28,6 +44,17 @@ class FileReader():
             source.close()
 
 class CSVReader():
+    DEFAULT_SOURCE = '-'
+
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--input',
+            default=cls.DEFAULT_SOURCE,
+            dest='source_name',
+            help='Set source (Default stdin)',
+        )
+
     def __init__(self, source_name, **kwargs):
         self.source_name = source_name
         self.source = None
