@@ -310,12 +310,25 @@ class ValueBreakdown(BaseStreamer):
                 yield wrapped_value
 
 @arg_help('Force each value to a string and prefix each with the original input value')
-async def input_headers(source):
-    async for entry in source:
-        value = utils.force_string(entry.value)
-        header = utils.force_string(entry.original_value)
-        entry.value = '{}: {}'.format(header, value)
-        yield entry
+class InputHeaders(BaseStreamer):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--indexes',
+            action='store_true',
+            default=False,
+            help='Also prepend index',
+        )
+
+    async def stream(self, source):
+        async for entry in source:
+            value = utils.force_string(entry.value)
+            header = utils.force_string(entry.original_value)
+            if self.options.get('indexes', False):
+                entry.value = '[{}] {}: {}'.format(entry.index, header, value)
+            else:
+                entry.value = '{}: {}'.format(header, value)
+            yield entry
 
 @arg_help('Filter out any entries that have produced an error')
 async def filter_out_errors(source):
@@ -426,7 +439,7 @@ STREAMERS = {
     'noop': noop,
     'split': split_lists,
     'breakdown': ValueBreakdown,
-    'headers': input_headers,
+    'headers': InputHeaders,
     'filter_out_errors': filter_out_errors,
     'errors': error_values,
     'buffer': StreamingBuffer,

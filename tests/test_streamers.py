@@ -162,20 +162,39 @@ def test_value_breakdown():
     )
 
 def test_input_headers():
-    a = Entry('a')
+    a = Entry('a', index=0)
     a.value = 1
-    b = Entry('b')
+    b = Entry('b', index=1)
     b.value = {'label': 'second entry'}
-    c = Entry('c')
+    c = Entry('c', index=2)
     c.value = set(['third entry'])
 
     do_streamer_test(
-        streamers.input_headers,
+        streamers.InputHeaders().stream,
         [a, b, c],
         [
             'a: 1',
             'b: {"label": "second entry"}',
             'c: {\'third entry\'}',
+        ],
+        wrap=False,
+    )
+
+
+    # With indexes
+    a = Entry('a', index=0)
+    a.value = 1
+    b = Entry('b', index=1)
+    b.value = {'label': 'second entry'}
+    c = Entry('c', index=2)
+    c.value = set(['third entry'])
+    do_streamer_test(
+        streamers.InputHeaders(indexes=True).stream,
+        [a, b, c],
+        [
+            '[0] a: 1',
+            '[1] b: {"label": "second entry"}',
+            '[2] c: {\'third entry\'}',
         ],
         wrap=False,
     )

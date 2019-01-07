@@ -73,7 +73,10 @@ def test_whitespace():
     del os.environ['STREAMLINE_CLOSING_NEWLINE']
 
 def test_ae_e2e():
-    do_cli_call('streamline -s sleep', "Foo\nBar", "Foo\nBar")
+    do_cli_call('streamline sleep', "Foo\nBar", "Foo\nBar")
+
+def test_ae_e2e():
+    do_cli_call('streamline sleep', "2\n1", "1\n2")
 
 def test_optional_flag():
     do_cli_call('streamline py -- "value.upper()"', "Foo\nBar", "FOO\nBAR")

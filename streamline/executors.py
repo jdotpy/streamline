@@ -191,7 +191,12 @@ class SleepHandler():
     async_handler = True
     
     async def handle(self, value):
-        await asyncio.sleep(1)
+        try:
+            time = float(value)
+        except Exception as e:
+            print(e)
+            time = 1
+        await asyncio.sleep(time)
         return value
 
 EXECUTORS = {
