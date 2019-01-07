@@ -154,6 +154,7 @@ class SSHHandler():
 @arg_help('Use a template to execute an HTTP request for each value', example='"https://{value}/"')
 class HTTPHandler():
     async_handler = True
+
     def __init__(self, url=None, method=None):
         self.url = url
         self.method = method
@@ -175,7 +176,7 @@ class HTTPHandler():
 
     def handle(self, value):
         url = self.url.format(value=value)
-        response = requests.request(self.method, url)
+        response = requests.request(self.method, url, timeout=(5, None))
         result = {
             'headers': dict(response.headers),
             'code': response.status_code,
