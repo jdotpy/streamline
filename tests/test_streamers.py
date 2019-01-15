@@ -96,6 +96,13 @@ def test_truth_filter():
         ['foobar', 34, True],
     )
 
+def test_falsey_filter():
+    do_streamer_test(
+        streamers.falsey,
+        ['foobar', '', 0, 34, None, True, False],
+        ['', 0, None, False],
+    )
+
 def test_json_parser():
     do_streamer_test(
         streamers.json_parser,

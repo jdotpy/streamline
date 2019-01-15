@@ -4,12 +4,14 @@ import argparse
 import asyncio
 import json
 import re
+import os
 import sys
 
 from .entries import entry_wrap, Entry
 from .extractor import Extractor
 from . import executors
 from . import utils
+from . import append_mode
 
 arg_help = utils.arg_help
 
@@ -163,7 +165,6 @@ class AsyncExecutor():
         self.all_enqueued = False
         self.loop = loop or asyncio.get_event_loop()
 
-
     def _show_progress(self, newline=False):
          if not self.show_progress:
              return
@@ -234,6 +235,12 @@ async def noop(source):
 async def truthy(source):
     async for entry in source:
         if entry.value:
+            yield entry
+
+@arg_help('Filter out values that are truthy')
+async def falsey(source):
+    async for entry in source:
+        if not entry.value:
             yield entry
 
 @arg_help('Take json strings and parse them into objects so other streamers can inspect attributes')
@@ -431,6 +438,46 @@ class HeadStreamer(BaseStreamer):
             if count >= max_count:
                 break
 
+@arg_help('Read the file indicated by the file', example='--path ~/dir/{value}.json')
+class ReadFileStreamer(BaseStreamer):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--path',
+            default='{value}',
+            help='Where to read the files from',
+        )
+        parser.add_argument(
+            '--file-metadata',
+            default=False,
+            action='store_true',
+            help='Whether to include the file metadata or just the content',
+        )
+
+    async def stream(self, source):
+        file_metadata = self.options.get('file_metadata', False)
+        file_path = os.path.expanduser(self.options.get('path'))
+        if os.path.isdir(file_path):
+            file_path = os.path.join(file_path,'{value}')
+        async for entry in source:
+            entry_file_path = file_path.format(value=entry.value)
+            try:
+                with open(entry_file_path, 'r') as f:
+                    contents = f.read()
+            except Exception as e:
+                entry.error(e)
+                yield entry
+                continue
+            if file_metadata:
+                entry.value = {
+                    'content': contents,
+                    'path': entry_file_path,
+                    'size': os.path.getsize(entry_file_path),
+                }
+            else:
+                entry.value = contents
+            yield entry
+
 STREAMERS = {
     'extract': ExtractionStreamer,
     'py': PyExecTransform,
@@ -446,6 +493,13 @@ STREAMERS = {
     'json': json_parser,
     'strip': StripWhitespace,
     'head': HeadStreamer,
+    'readfile': ReadFileStreamer,
 }
 # Add executors that need to be wrapped with AsyncExecutor
 STREAMERS.update(executors.EXECUTORS)
+
+# Append-mode stream modifiers
+STREAMERS.update({
+    'append:start': append_mode.append_start,
+    'append:stop': append_mode.append_stop,
+})

@@ -2,22 +2,50 @@ import subprocess
 import argparse
 import asyncio
 import shlex
+import os
 
 from .utils import import_obj, inject_module, arg_help
 
-async def _get_client_keys():
+async def get_client_keys():
     client = await asyncssh.connect_agent()
     keys = await client.get_keys()
     return keys
 
-@arg_help('Treat each value as a host to connect to. Copy a file to or from this host', example='"/tmp/file.txt" "{value}:/tmp/file.txt')
-class ScpHandler():
+class BaseAsyncSSHHandler():
     async_handler = True
-    def __init__(self, source=None, target=None):
+
+    def __init__(self, **options):
         inject_module('asyncssh', globals())
-        self.source = source
-        self.target = target
+        self.options = options
         self.client_keys = None
+
+        # Hook for other things
+        self.initialize()
+
+    def initialize(self):
+        pass
+
+    async def _get_client_keys(self):
+        if self.client_keys:
+            return self.client_keys
+        elif hasattr(self, '_client_key_future'):
+            await asyncio.wait([self._client_key_future])
+            return self.client_keys
+
+        self._client_key_future = asyncio.ensure_future(get_client_keys())
+        client_keys = await self._client_key_future
+        self.client_keys = client_keys
+        return client_keys
+
+    async def handle(self, value):
+        client_keys = await self._get_client_keys()
+
+        async with asyncssh.connect(value.strip(), known_hosts=None, client_keys=client_keys) as conn:
+            return await self.handle_connection(conn, value)
+
+@arg_help('Treat each value as a host to connect to. Copy a file to or from this host', example='"/tmp/file.txt" "{value}:/tmp/file.txt')
+class ScpHandler(BaseAsyncSSHHandler):
+    async_handler = True
 
     @classmethod
     def args(cls, parser):
@@ -32,22 +60,22 @@ class ScpHandler():
             help='File copy target'
         )
 
-    async def handle(self, value):
-        if not self.client_keys:
-            self.client_keys = await _get_client_keys()
+    async def handle_connection(self, conn, value):
+        formatted_source = self.options['source'].format(value=value)
+        formatted_target = self.options['target'].format(value=value)
 
-        source = self.source.format(value=value)
-        target = self.target.format(value=value)
-        async with asyncssh.connect(value, known_hosts=None, client_keys=self.client_keys) as conn:
-            if self.source.startswith('{value}:'):
-                source = (conn, source.split(':', 1)[1])
-            if self.target.startswith('{value}:'):
-                target = (conn, target.split(':', 1)[1])
-            await asyncssh.scp(source, target)
+        target = formatted_target
+        source = formatted_source
+        if self.options['source'].startswith('{value}:'):
+            source = (conn, formatted_source.split(':', 1)[1])
+        if self.options['target'].startswith('{value}:'):
+            target = (conn, formatted_target.split(':', 1)[1])
+
+        await asyncssh.scp(source, target)
         return {
             'success': True,
-            'source': self.source.format(value=value),
-            'target': self.target.format(value=value),
+            'source': formatted_source,
+            'target': formatted_target,
         }
 
 @arg_help('Run a shell command for each value', example='"nc -zv {value} 22"')
@@ -80,15 +108,13 @@ class ShellHandler():
         }
 
 @arg_help('Treat each value as a host to connect to. SSH in and run a command returning the output', example='"uptime"')
-class SSHHandler():
-    async_handler = True
+class SSHHandler(BaseAsyncSSHHandler):
     NO_SUDO = object()
 
-    def __init__(self, command=None, continue_on_error=True, as_user=None):
-        inject_module('asyncssh', globals())
-        self.command = command
-        self.continue_on_error = continue_on_error
-        self.client_keys = None
+    def initialize(self):
+        self.command = self.options['command']
+        self.continue_on_error = self.options.get('continue_on_error', False)
+        as_user = self.options.get('as_user', None)
 
         # Hackery around argparse's "empty" value being None for present arg
         # while the actual missing arg takes on the default defined in the 
@@ -121,27 +147,22 @@ class SSHHandler():
             help='Sudo as user'
         )
 
-    async def handle(self, value):
-        if not self.client_keys:
-            self.client_keys = await _get_client_keys()
-
+    async def handle_connection(self, conn, value):
         command_results = []
         commands = [self.command]
-        host = value.strip()
-        async with asyncssh.connect(host, known_hosts=None, client_keys=self.client_keys) as conn:
-            for command in commands:
-                if self.as_user:
-                    command = 'sudo -u {} {}'.format(self.as_user, command)
-                result = await conn.run(command)
-                command_results.append({
-                    'host': value,
-                    'command': command,
-                    'exit_code': result.exit_status,
-                    'stdout': result.stdout,
-                    'stderr': result.stderr,
-                })
-                if result.exit_status != 0 and not self.continue_on_error:
-                    break
+        for command in commands:
+            if self.as_user:
+                command = 'sudo -u {} {}'.format(self.as_user, command)
+            result = await conn.run(command)
+            command_results.append({
+                'host': value,
+                'command': command,
+                'exit_code': result.exit_status,
+                'stdout': result.stdout,
+                'stderr': result.stderr,
+            })
+            if result.exit_status != 0 and not self.continue_on_error:
+                break
 
         success = all([r['exit_code'] == 0 for r in command_results])
         if len(commands) == 1:
@@ -155,10 +176,19 @@ class SSHHandler():
 class HTTPHandler():
     async_handler = True
 
-    def __init__(self, url=None, method=None):
+    def __init__(self, url=None, method=None, auth=None):
         self.url = url
         self.method = method
         inject_module('requests', globals())
+
+        self.auth = None
+        if auth:
+            self.auth = tuple(auth.split(':'))
+        elif 'STREAMLINE_HTTP_AUTH' in os.environ:
+            self.auth = tuple(os.environ.get('STREAMLINE_HTTP_AUTH').split(':'))
+        if self.auth and len(self.auth) != 2:
+            raise ValueError('Incorrect auth value. Format is "user:password"')
+
 
     @classmethod
     def args(cls, parser):
@@ -173,10 +203,14 @@ class HTTPHandler():
             default='GET',
             help='HTTP Method to use (GET/POST, etc)'
         )
+        parser.add_argument(
+            '--auth',
+            help='HTTP authentication to use (e.g. user:password)'
+        )
 
     def handle(self, value):
         url = self.url.format(value=value)
-        response = requests.request(self.method, url, timeout=(5, None))
+        response = requests.request(self.method, url, timeout=(5, None), auth=self.auth)
         result = {
             'headers': dict(response.headers),
             'code': response.status_code,
