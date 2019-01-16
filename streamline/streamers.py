@@ -12,7 +12,6 @@ from .entries import entry_wrap, Entry
 from .extractor import Extractor
 from . import executors
 from . import utils
-from . import append_mode
 
 arg_help = utils.arg_help
 
