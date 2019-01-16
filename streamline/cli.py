@@ -14,7 +14,7 @@ from .core import pipe
 
 logger = logging.getLogger(__file__)
 
-SHORTHAND_PATTERN = r'^(?P<target_attr>[-_\w]+=)?(?P<streamer>[-_.\w]+)\((?P<input_extract>[-._\w]+), ?(?P<output_extract>[-._\w\[\]]+)\)$'
+SHORTHAND_PATTERN = r'^(?P<target_attr>[-\[\]_\w]+=)?(?P<streamer>[-\[\]_.\w]+)\((?P<input_extract>[-\[\]._\w]+), ?(?P<output_extract>[-._\w\[\]]+)\)$'
 
 def streamline_command(args):
     cmd_parser = argparse.ArgumentParser(prog='streamline', add_help=False)

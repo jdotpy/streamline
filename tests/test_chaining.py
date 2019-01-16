@@ -35,3 +35,21 @@ def test_shorthand_assignment():
         '{"number": 1}\n{"number": 2}\n{"number": 3}',
         '8\n16\n24',
     )
+
+def test_shorthand_indexing():
+    do_cli_call(
+        ' -- '.join([
+            'streamline "py(value[0],value.multiplied)" errors',
+            '\'{ "multiplied": value * 8 }\'',
+        ]),
+        'Foo\nBar',
+        'FFFFFFFF\nBBBBBBBB',
+    )
+    do_cli_call(
+        ' -- '.join([
+            'streamline "py([0],multiplied)" errors',
+            '\'{ "multiplied": value * 8 }\'',
+        ]),
+        'Foo\nBar',
+        'FFFFFFFF\nBBBBBBBB',
+    )

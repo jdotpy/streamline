@@ -52,8 +52,12 @@ def extract_path(data, path=None):
 
 class Extractor():
     """ Expose the extraction logic in class form """
-    def __init__(self, path):
+    def __init__(self, path, value_symbol=False):
         self.selectors = parse_selectors(path)
+
+        # Support the optional "value..." prefix syntax
+        if value_symbol and self.selectors and self.selectors[0] == 'value':
+            self.selectors = self.selectors[1:]
 
     def extract(self, data):
         return extract_path(data, self.selectors)

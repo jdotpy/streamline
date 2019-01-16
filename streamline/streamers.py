@@ -118,13 +118,12 @@ class ExtractionStreamer(BaseStreamer):
     def args(cls, parser):
         parser.add_argument(
             '--selector',
+            required=True,
             help='dot-separated path to desired attribute',
         )
 
     def initialize(self):
-        if self.options['selector'].startswith('value.'):
-            self.options['selector'] = self.options['selector'][len('value.'):]
-        self.extractor = Extractor(self.options['selector'])
+        self.extractor = Extractor(self.options.get('selector', None), value_symbol=True)
 
     async def handle(self, value):
         return self.extractor.extract(value)
@@ -150,7 +149,6 @@ class Combiner(BaseStreamer):
             default=None,
             help='Path of attribute on "target" to set as the value of "source"',
         )
-
 
     async def stream(self, source):
         path = self.options.get('path', None)
