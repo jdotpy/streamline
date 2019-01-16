@@ -3,6 +3,7 @@ import traceback
 import argparse
 import asyncio
 import json
+import copy
 import re
 import os
 import sys
@@ -112,7 +113,7 @@ class PyExecFilter(BaseStreamer):
             if keep:
                 yield entry
 
-@arg_help('Filter out values that dont have a truthy result to a particular python expression', example='--selector exit_code')
+@arg_help('Change the value to an attribute of the current value', example='--selector exit_code')
 class ExtractionStreamer(BaseStreamer):
     @classmethod
     def args(cls, parser):
@@ -126,6 +127,53 @@ class ExtractionStreamer(BaseStreamer):
 
     async def handle(self, value):
         return self.extractor.extract(value)
+
+@arg_help('Combine two previous historical values by setting an attribute', example='--source "-1" --target "-2"')
+class Combiner(BaseStreamer):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--source',
+            type=int,
+            default=-1,
+            help='index of history item to get insertion value from',
+        )
+        parser.add_argument(
+            '--target',
+            type=int,
+            default=-2,
+            help='index of history item to insert into',
+        )
+        parser.add_argument(
+            '--path',
+            default=None,
+            help='Path of attribute on "target" to set as the value of "source"',
+        )
+
+
+    async def stream(self, source):
+        path = self.options.get('path', None)
+
+        async for entry in source:
+            history = entry.get_history()
+            try:
+                source = history[self.options['source']]
+                target = history[self.options['target']]
+            except IndexError as e:
+                entry.error(e)
+                yield entry
+                continue
+
+            if path is None:
+                entry.value = {'source': source, 'target': target}
+            elif not isinstance(target, dict):
+                # We can't set any attributes here, move on
+                entry.error('Cannot combine attributes as target is not an object')
+            else:
+                new_value = copy.deepcopy(target)
+                new_value[path] = source
+                entry.value = new_value
+            yield entry
 
 class AsyncExecutor():
     """
@@ -494,12 +542,47 @@ STREAMERS = {
     'strip': StripWhitespace,
     'head': HeadStreamer,
     'readfile': ReadFileStreamer,
+    'combine': Combiner,
 }
 # Add executors that need to be wrapped with AsyncExecutor
 STREAMERS.update(executors.EXECUTORS)
 
-# Append-mode stream modifiers
+@arg_help('Start a new history tree')
+async def history_push(source):
+    async for entry in source:
+        entry.push()
+        yield entry
+        
+@arg_help('Walk back up one level in the history tree')
+async def history_pop(source):
+    async for entry in source:
+        entry.pop()
+        yield entry
+
+@arg_help('Treat the latest value as the original')
+async def history_collapse(source):
+    async for entry in source:
+        entry.collapse()
+        yield entry
+
+@arg_help('Clear all levels of history')
+async def history_reset(source):
+    async for entry in source:
+        entry.reset()
+        yield entry
+
+@arg_help('Set the current value to a list of all previous values')
+async def history_all(source):
+    async for entry in source:
+        entry.value = entry.get_history()
+        yield entry
+
+
+# entry-transformations
 STREAMERS.update({
-    'append:start': append_mode.append_start,
-    'append:stop': append_mode.append_stop,
+    'history:push': history_push,
+    'history:pop': history_pop,
+    'history:collapse': history_collapse,
+    'history:reset': history_reset,
+    'history:values': history_all,
 })

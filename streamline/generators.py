@@ -1,6 +1,7 @@
 from . import utils 
 from . import entries
 
+import json
 import csv
 
 class FileReader():
@@ -31,11 +32,15 @@ class FileReader():
         factory = entries.EntryFactory()
         source = utils.get_file_io(self.source_name)
 
-        for index, line in enumerate(source):
-            ending_delim = line.endswith(self.DELIMITER)
-            if ending_delim:
-                line = line.rstrip(self.DELIMITER)
-            yield factory(line.rstrip(self.DELIMITER))
+        ending_delim = False
+        try:
+            for index, line in enumerate(source):
+                ending_delim = line.endswith(self.DELIMITER)
+                if ending_delim:
+                    line = line.rstrip(self.DELIMITER)
+                yield factory(line.rstrip(self.DELIMITER))
+        except KeyboardInterrupt as e:
+            pass
 
         if ending_delim and self.keep_trailing_newline:
             yield factory('')
@@ -70,9 +75,41 @@ class CSVReader():
         if hasattr(source, 'close'):
             source.close()
 
+class JsonReader():
+    DEFAULT_SOURCE = '-'
+
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--input',
+            default=cls.DEFAULT_SOURCE,
+            dest='source_name',
+            help='Set source (Default stdin)',
+        )
+
+    def __init__(self, source_name, **kwargs):
+        self.source_name = source_name
+        self.source = None
+
+    async def stream(self):
+        factory = entries.EntryFactory()
+        source = utils.get_file_io(self.source_name)
+        content = source.read()
+        if hasattr(source, 'close'):
+            source.close()
+
+        data = json.loads(content)
+        if isinstance(data, list):
+            for row in data:
+                yield factory(row)
+        else:
+            yield factory(data)
+
+
 GENERATORS = {
     'file': FileReader,
     'csv': CSVReader,
+    'json': JsonReader,
 }
 
 def load_generator(path):

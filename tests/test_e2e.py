@@ -112,15 +112,3 @@ def test_duplicate_module():
         '{"foo": {"bar": 1}}\n{"foo": {"bar": 2}}',
         '1\n2',
     )
-
-def test_append_mode():
-    do_cli_call(
-        ' -- '.join([
-            'streamline append:start py py append:stop py',
-            '"int(value) + 1"',
-            '"int(value) * \'a\'"',
-            '"\', \'.join([str(v) for v in value])"',
-        ]),
-        '1\n2\n3',
-        '1, 2, a\n2, 3, aa\n3, 4, aaa',
-    )

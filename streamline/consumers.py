@@ -118,10 +118,41 @@ class CSVWriter():
         if hasattr(self.target, 'close'):
             self.target.close()
 
+class JsonWriter():
+    DEFAULT_OUTPUT = '-'
+
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--output',
+            default=cls.DEFAULT_OUTPUT,
+            help='Set target of output (Default stdout)',
+        )
+
+    def __init__(self, output=DEFAULT_OUTPUT):
+        self.target_name = output
+
+    async def stream(self, source):
+        self.target = utils.get_file_io(self.target_name, write=True)
+        self.target.write('[\n')
+        first = True
+        async for entry in source:
+            if not first:
+                self.target.write(',\n    ')
+            else:
+                self.target.write('    ')
+            self.target.write(json.dumps(entry.value))
+            first = False
+        self.target.write('\n]')
+
+        if hasattr(self.target, 'close'):
+            self.target.close()
+
 
 CONSUMERS = {
     'file': FileWriter,
     'csv': CSVWriter,
+    'json': JsonWriter,
 }
 
 def load_consumer(path):
