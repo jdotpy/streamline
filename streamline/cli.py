@@ -3,6 +3,7 @@ import asyncio
 import logging
 import sys
 import os
+import re
 
 from . import utils
 from . import executors
@@ -12,6 +13,8 @@ from . import streamers
 from .core import pipe
 
 logger = logging.getLogger(__file__)
+
+SHORTHAND_PATTERN = r'^(?P<target_attr>[-_\w]+=)?(?P<streamer>[-_.\w]+)\((?P<input_extract>[-._\w]+), ?(?P<output_extract>[-._\w\[\]]+)\)$'
 
 def streamline_command(args):
     cmd_parser = argparse.ArgumentParser(prog='streamline', add_help=False)
@@ -98,8 +101,35 @@ def streamline_command(args):
     # Streamers
     if args.streamers:
         for streamer_name in args.streamers:
-            streamer, extra_args = load_streamer(streamer_name, extra_args)
-            command_streamers.append(streamer)
+            # Support shorthand syntax "attr=streamer(input.path, output.path)"
+            shorthand_match = re.match(SHORTHAND_PATTERN, streamer_name)
+            if shorthand_match:
+                shorthand_options = shorthand_match.groupdict()
+                # Load the main streamer
+                main_streamer, extra_args = load_streamer(shorthand_options['streamer'], extra_args)
+
+                # Compose the sub-command
+                command_streamers.append(streamers.history_push)
+                if shorthand_options['input_extract'] != 'value':
+                    input_extract = streamers.ExtractionStreamer(
+                        selector=shorthand_options['input_extract']
+                    )
+                    command_streamers.append(input_extract.stream)
+                command_streamers.append(main_streamer)
+                if shorthand_options['output_extract'] != 'value':
+                    output_extract = streamers.ExtractionStreamer(
+                        selector=shorthand_options['output_extract']
+                    )
+                    command_streamers.append(output_extract.stream)
+                command_streamers.append(streamers.history_pop)
+                if shorthand_options['target_attr']:
+                    attr = shorthand_options['target_attr'][:-1]
+                    combiner = streamers.Combiner(path=attr, target=-2, source=-1)
+                    command_streamers.append(combiner.stream)
+
+            else:
+                streamer, extra_args = load_streamer(streamer_name, extra_args)
+                command_streamers.append(streamer)
 
     # Ensure we don't have any extra arguments
     if extra_args:

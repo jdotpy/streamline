@@ -14,3 +14,24 @@ def test_appending_data():
         '{"number": 1}\n{"number": 2}\n{"number": 3}',
         '8\n16\n24',
     )
+
+def test_shorthand_simple():
+    do_cli_call(
+        ' -- '.join([
+            'streamline json py(number,new)',
+            '\'{ "value": value, "new": value * 8 }\'',
+        ]),
+        '{"number": 1}\n{"number": 2}\n{"number": 3}',
+        '8\n16\n24',
+    )
+
+def test_shorthand_assignment():
+    do_cli_call(
+        ' -- '.join([
+            'streamline json foobar=py(number,new) extract',
+            '\'{ "value": value, "new": value * 8 }\'',
+            '--selector foobar',
+        ]),
+        '{"number": 1}\n{"number": 2}\n{"number": 3}',
+        '8\n16\n24',
+    )

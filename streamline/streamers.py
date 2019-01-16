@@ -123,6 +123,8 @@ class ExtractionStreamer(BaseStreamer):
         )
 
     def initialize(self):
+        if self.options['selector'].startswith('value.'):
+            self.options['selector'] = self.options['selector'][len('value.'):]
         self.extractor = Extractor(self.options['selector'])
 
     async def handle(self, value):
