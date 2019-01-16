@@ -1,8 +1,11 @@
 import subprocess
 import argparse
 import asyncio
+import urllib3
 import shlex
 import os
+
+urllib3.disable_warnings()
 
 from .utils import import_obj, inject_module, arg_help
 
@@ -176,7 +179,7 @@ class SSHHandler(BaseAsyncSSHHandler):
 class HTTPHandler():
     async_handler = True
 
-    def __init__(self, url=None, method=None, auth=None):
+    def __init__(self, url=None, method=None, auth=None, no_verify=False):
         self.url = url
         self.method = method
         inject_module('requests', globals())
@@ -188,6 +191,8 @@ class HTTPHandler():
             self.auth = tuple(os.environ.get('STREAMLINE_HTTP_AUTH').split(':'))
         if self.auth and len(self.auth) != 2:
             raise ValueError('Incorrect auth value. Format is "user:password"')
+
+        self.verify = not no_verify
 
 
     @classmethod
@@ -207,10 +212,22 @@ class HTTPHandler():
             '--auth',
             help='HTTP authentication to use (e.g. user:password)'
         )
+        parser.add_argument(
+            '--no-verify',
+            default=False,
+            action='store_true',
+            help='Disable SSL verification'
+        )
 
     def handle(self, value):
         url = self.url.format(value=value)
-        response = requests.request(self.method, url, timeout=(5, None), auth=self.auth)
+        response = requests.request(
+            self.method,
+            url,
+            timeout=(5, None),
+            auth=self.auth,
+            verify=self.verify,
+        )
         result = {
             'headers': dict(response.headers),
             'code': response.status_code,
