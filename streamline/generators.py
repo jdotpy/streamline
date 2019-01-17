@@ -1,8 +1,10 @@
 from . import utils 
 from . import entries
 
+import glob
 import json
 import csv
+import os
 
 class FileReader():
     DELIMITER = '\n'
@@ -105,11 +107,50 @@ class JsonReader():
         else:
             yield factory(data)
 
+class MultifileReader():
+    DEFAULT_PATTERN= '.'
+
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--pattern',
+            default=cls.DEFAULT_PATTERN,
+            help='Set directory to list files from',
+        )
+        parser.add_argument(
+            '--metadata',
+            default=False,
+            action='store_true',
+            help='Include file metadata',
+        )
+
+    def __init__(self, pattern=None, metadata=False):
+        self.include_metadata = metadata
+        self.pattern = os.path.expanduser(pattern)
+        self.pattern = os.path.abspath(self.pattern)
+        if os.path.isdir(self.pattern):
+            self.pattern += '/*'
+
+    async def stream(self):
+        factory = entries.EntryFactory()
+        for path in glob.glob(self.pattern):
+            if os.path.isfile(path):
+                with open(path, 'r') as f:
+                    content = f.read()
+                if self.include_metadata:
+                    yield factory({
+                        'path': path,
+                        'content': content,
+                    })
+                else:
+                    yield factory(content)
+
 
 GENERATORS = {
     'file': FileReader,
     'csv': CSVReader,
     'json': JsonReader,
+    'files': MultifileReader,
 }
 
 def load_generator(path):
@@ -119,5 +160,7 @@ def load_generator(path):
         Generator = utils.import_obj(path)
     else:
         Generator = GENERATORS.get(path)
+    if Generator is None:
+        raise ValueError('Invalid generator: {}'.format(path))
     return Generator
 

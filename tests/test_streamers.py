@@ -128,6 +128,13 @@ def test_split_lists():
         [1,2,'a','b'],
     )
 
+def test_split_strings():
+    do_streamer_test(
+        streamers.Split().stream,
+        ['foo bar', 'mine', 'zip zip zip'],
+        ['foo', 'bar', 'mine', 'zip', 'zip', 'zip']
+    )
+
 def test_value_breakdown():
     # summary mode
     do_streamer_test(

@@ -162,5 +162,7 @@ def load_consumer(path):
         Consumer = utils.import_obj(path)
     else:
         Consumer = CONSUMERS.get(path)
+    if Consumer is None:
+        raise ValueError('Invalid consumer: {}'.format(path))
     return Consumer
 

@@ -309,10 +309,38 @@ async def split_lists(source):
         # No-op on non-list values
         if not isinstance(entry.value, list):
             yield entry
-
+            continue
 
         for wrapped_value in entry_wrap(entry.value):
             yield wrapped_value
+
+@arg_help('Take any values that are an array and treat each value of an array as a separate input ')
+class Split(BaseStreamer):
+    """ Splits arrays into multiple entries """
+    DEFAULT_DELIMITER = r'\s+'
+
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--delimiter',
+            action='store_true',
+            default=DEFAULT_DELIMITER,
+            help='Regular expression pattern on which to split',
+        )
+
+    def initialize(self):
+        delim = self.options.get('delimiter', self.DEFAULT_DELIMITER)
+        self.pattern = re.compile(delim)
+
+    async def stream(self, source):
+        async for entry in source:
+            # No-op on non-str values
+            if not isinstance(entry.value, str):
+                yield entry
+                continue
+
+            for wrapped_value in entry_wrap(re.split(self.pattern, entry.value)):
+                yield wrapped_value
 
 @arg_help('Show a report of how many input values ended up with a particular result value')
 class ValueBreakdown(BaseStreamer):
@@ -531,7 +559,8 @@ STREAMERS = {
     'pyfilter': PyExecFilter,
     'truthy': truthy,
     'noop': noop,
-    'split': split_lists,
+    'split_list': split_lists,
+    'split': Split,
     'breakdown': ValueBreakdown,
     'headers': InputHeaders,
     'filter_out_errors': filter_out_errors,
