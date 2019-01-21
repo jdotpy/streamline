@@ -25,6 +25,8 @@ class FileWriter():
         self.target_template = None
         self.first_written = False
 
+        self.force_closing_newline = os.environ.get('STREAMLINE_CLOSING_NEWLINE')
+
     def _output_value(self, entry):
         return utils.force_string(entry.value)
 
@@ -42,16 +44,15 @@ class FileWriter():
                 with open(file_name, 'w') as target_file:
                     target_file.write(output)
             else:
-                if self.first_written:
+                if self.force_closing_newline:
+                    output = output + self.DELIMITER
+                elif self.first_written:
                     output = self.DELIMITER + output
                 else:
                     self.first_written = True
                 self.target.write(output)
             if hasattr(self.target, 'flush'):
                 self.target.flush()
-
-        if not output.endswith('\n') and os.environ.get('STREAMLINE_CLOSING_NEWLINE'):
-            self.target.write('\n')
 
         if self.target and hasattr(self.target, 'close'):
             self.target.close()

@@ -44,13 +44,10 @@ Now lets do something a little less useless. Lets use the "shell" streamer to ex
 Streamline modules aim to provide all the useful information in object form as output can then be customized with other streaming modules. For exampe, to take the above output and get just the exit code that tells us whether the port is open we can just add the `--headers` option to prefix each output with the original input and the `--extract exit_code` option to set the value to the `exit_code` property of each result:
 
 ```bash
-  $ printf "www.google.com\nslashdot.org" | streamline --extract exit_code --headers -s shell  -- "nc -zv {value} 443"
+  $ printf "www.google.com\nslashdot.org" | streamline -s shell extract headers -- "nc -zv {value} 443" --selector exit_code
   www.google.com: 0
   slashdot.org: 0
 ```
-
-Everything before the `--` is an option for the streamline command and options after that are for the particular modules we're using (`shell` in this case).
-
 
 ## Built-in Modules
 

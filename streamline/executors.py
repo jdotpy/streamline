@@ -2,6 +2,7 @@ import subprocess
 import argparse
 import asyncio
 import urllib3
+import uuid
 import shlex
 import os
 
@@ -46,7 +47,7 @@ class BaseAsyncSSHHandler():
         async with asyncssh.connect(value.strip(), known_hosts=None, client_keys=client_keys) as conn:
             return await self.handle_connection(conn, value)
 
-@arg_help('Treat each value as a host to connect to. Copy a file to or from this host', example='"/tmp/file.txt" "{value}:/tmp/file.txt')
+@arg_help('Treat each value as a host to connect to. Copy a file to or from this host', example='"/tmp/file.txt" "{value}:/tmp/file.txt"')
 class ScpHandler(BaseAsyncSSHHandler):
     async_handler = True
 
@@ -116,7 +117,6 @@ class SSHHandler(BaseAsyncSSHHandler):
 
     def initialize(self):
         self.command = self.options['command']
-        self.continue_on_error = self.options.get('continue_on_error', False)
         as_user = self.options.get('as_user', None)
 
         # Hackery around argparse's "empty" value being None for present arg
@@ -137,10 +137,55 @@ class SSHHandler(BaseAsyncSSHHandler):
             help='Command to run'
         )
         parser.add_argument(
-            '--continue-on-error',
-            action='store_true',
-            default=False,
-            help='Continue executing commands if non-success exit status is given',
+            '--sudo',
+            nargs='?',
+            default=cls.NO_SUDO,
+            dest='as_user',
+            help='Sudo as user'
+        )
+
+    async def handle_connection(self, conn, value):
+        if self.as_user:
+            command = 'sudo -u {} {}'.format(self.as_user, self.command)
+        else:
+            command = self.command
+        response = await conn.run(command)
+        result = {
+            'host': value,
+            'command': command,
+            'exit_code': response.exit_status,
+            'success': response.exit_status == 0,
+            'stdout': response.stdout,
+            'stderr': response.stderr,
+        }
+        return result
+
+@arg_help('Copy a script to target machine and execute', example='~/dostuff.sh')
+class SSHExecHandler(BaseAsyncSSHHandler):
+    NO_SUDO = object()
+
+    def initialize(self):
+        self.script_source = self.options['script']
+        self.script_target = '~/{}.script'.format(uuid.uuid4())
+
+        as_user = self.options.get('as_user', None)
+
+        # Hackery around argparse's "empty" value being None for present arg
+        # while the actual missing arg takes on the default defined in the 
+        # `add_argument` function
+        if as_user == self.NO_SUDO:
+            self.as_user = None
+        elif not as_user:
+            self.as_user = 'root'
+        else:
+            self.as_user = as_user
+
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            'script',
+            nargs='?',
+            help='Script to run'
         )
         parser.add_argument(
             '--sudo',
@@ -151,29 +196,23 @@ class SSHHandler(BaseAsyncSSHHandler):
         )
 
     async def handle_connection(self, conn, value):
-        command_results = []
-        commands = [self.command]
-        for command in commands:
-            if self.as_user:
-                command = 'sudo -u {} {}'.format(self.as_user, command)
-            result = await conn.run(command)
-            command_results.append({
-                'host': value,
-                'command': command,
-                'exit_code': result.exit_status,
-                'stdout': result.stdout,
-                'stderr': result.stderr,
-            })
-            if result.exit_status != 0 and not self.continue_on_error:
-                break
-
-        success = all([r['exit_code'] == 0 for r in command_results])
-        if len(commands) == 1:
-            return { 'success': success, **command_results[0] }
-        return {
-            'success': success,
-            'commands': command_results,
+        await asyncssh.scp(self.script_source, (conn, self.script_target))
+        await conn.run('chmod +x {}'.format(self.script_target))
+        if self.as_user:
+            command = 'sudo -u {} {}'.format(self.as_user, self.script_target)
+        else:
+            command = self.script_target
+        response = await conn.run(command)
+        await conn.run('rm {}'.format(self.script_target))
+        result = {
+            'host': value,
+            'command': command,
+            'exit_code': response.exit_status,
+            'success': response.exit_status == 0,
+            'stdout': response.stdout,
+            'stderr': response.stderr,
         }
+        return result
 
 @arg_help('Use a template to execute an HTTP request for each value', example='"https://{value}/"')
 class HTTPHandler():
@@ -238,7 +277,7 @@ class HTTPHandler():
             result['response'] = response.text
         return result
 
-@arg_help('Sleep for each entry making no change to its value')
+@arg_help('Sleep for a second (or for {value} seconds) for each entry making no change to its value')
 class SleepHandler():
     async_handler = True
     
@@ -246,7 +285,6 @@ class SleepHandler():
         try:
             time = float(value)
         except Exception as e:
-            print(e)
             time = 1
         await asyncio.sleep(time)
         return value
@@ -254,6 +292,7 @@ class SleepHandler():
 EXECUTORS = {
     'http': HTTPHandler,
     'ssh': SSHHandler,
+    'ssh_exec': SSHExecHandler,
     'shell': ShellHandler,
     'scp': ScpHandler,
     'sleep': SleepHandler,
