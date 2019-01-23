@@ -145,6 +145,12 @@ class Combiner(BaseStreamer):
             help='index of history item to insert into',
         )
         parser.add_argument(
+            '--disallow-wrapping',
+            action='store_true',
+            default=False,
+            help='Dont automatically wrap non-object results in an object',
+        )
+        parser.add_argument(
             '--path',
             default=None,
             help='Path of attribute on "target" to set as the value of "source"',
@@ -164,10 +170,13 @@ class Combiner(BaseStreamer):
                 continue
 
             if path is None:
-                entry.value = {'source': source, 'target': target}
-            elif not isinstance(target, dict):
-                # We can't set any attributes here, move on
-                entry.error('Cannot combine attributes as target is not an object')
+                path = 'value'
+            if not isinstance(target, dict) :
+                if self.options.get('disallow_wrapping', False):
+                    # We can't set any attributes here, move on
+                    entry.error('Cannot combine attributes as target is not an object')
+                else:
+                    entry.value = {'base': target, path: source}
             else:
                 new_value = copy.deepcopy(target)
                 new_value[path] = source

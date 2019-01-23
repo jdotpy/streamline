@@ -57,7 +57,7 @@ There are many modules available that do asynchronous jobs and transformations t
 $ streamline --help
 
 ::extract::
-	Description: Filter out values that dont have a truthy result to a particular python expression
+	Description: Change the value to an attribute of the current value
 	Example: streamline -s extract -- --selector exit_code
 
 ::py::
@@ -75,6 +75,10 @@ $ streamline --help
 ::noop::
 	Description: No operation. Just for testing.
 	Example: streamline -s noop -- 
+
+::split_list::
+	Description: Take any values that are an array and treat each value of an array as a separate input 
+	Example: streamline -s split_list -- 
 
 ::split::
 	Description: Take any values that are an array and treat each value of an array as a separate input 
@@ -100,6 +104,26 @@ $ streamline --help
 	Description: Hold entries in memory until a certain number is reached (give no args to buffer all)
 	Example: streamline -s buffer -- --buffer 20
 
+::json::
+	Description: Take json strings and parse them into objects so other streamers can inspect attributes
+	Example: streamline -s json -- 
+
+::strip::
+	Description: Strip surrounding whitespace from each string entry, removing entries that are only whitespace
+	Example: streamline -s strip -- --buffer 20
+
+::head::
+	Description: Only take the first X entries (Default 1)
+	Example: streamline -s head -- --count 20
+
+::readfile::
+	Description: Read the file indicated by the file
+	Example: streamline -s readfile -- --path ~/dir/{value}.json
+
+::combine::
+	Description: Combine two previous historical values by setting an attribute
+	Example: streamline -s combine -- --source "-1" --target "-2"
+
 ::http::
 	Description: Use a template to execute an HTTP request for each value
 	Example: streamline -s http -- "https://{value}/"
@@ -108,17 +132,41 @@ $ streamline --help
 	Description: Treat each value as a host to connect to. SSH in and run a command returning the output
 	Example: streamline -s ssh -- "uptime"
 
+::ssh_exec::
+	Description: Copy a script to target machine and execute
+	Example: streamline -s ssh_exec -- ~/dostuff.sh
+
 ::shell::
 	Description: Run a shell command for each value
 	Example: streamline -s shell -- "nc -zv {value} 22"
 
 ::scp::
 	Description: Treat each value as a host to connect to. Copy a file to or from this host
-	Example: streamline -s scp -- "/tmp/file.txt" "{value}:/tmp/file.txt
+	Example: streamline -s scp -- "/tmp/file.txt" "{value}:/tmp/file.txt"
 
 ::sleep::
-	Description: Sleep for each entry making no change to its value
+	Description: Sleep for a second (or for {value} seconds) for each entry making no change to its value
 	Example: streamline -s sleep -- 
+
+::history:push::
+	Description: Start a new history tree
+	Example: streamline -s history:push -- 
+
+::history:pop::
+	Description: Walk back up one level in the history tree
+	Example: streamline -s history:pop -- 
+
+::history:collapse::
+	Description: Treat the latest value as the original
+	Example: streamline -s history:collapse -- 
+
+::history:reset::
+	Description: Clear all levels of history
+	Example: streamline -s history:reset -- 
+
+::history:values::
+	Description: Set the current value to a list of all previous values
+	Example: streamline -s history:values -- 
 
 ```
 
