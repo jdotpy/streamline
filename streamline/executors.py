@@ -10,6 +10,20 @@ urllib3.disable_warnings()
 
 from .utils import import_obj, inject_module, arg_help
 
+def parse_vars(args):
+    env_vars = {}
+    for arg in args:
+        if '=' in arg:
+            key, value = arg.split('=', 1)
+            env_vars[key] = value
+        else:
+            env_vars[arg] = os.environ.get(arg, '')
+    return env_vars
+
+def format_env_vars(env_vars):
+    pairs = ['{}="{}"'.format(key, value) for key, value in env_vars.items()]
+    return ' '.join(pairs)
+
 async def get_client_keys():
     client = await asyncssh.connect_agent()
     keys = await client.get_keys()
@@ -165,6 +179,7 @@ class SSHExecHandler(BaseAsyncSSHHandler):
     NO_SUDO = object()
 
     def initialize(self):
+        self.vars = parse_vars(self.options.get('var', []))
         self.script_source = self.options['script']
         self.script_target = '~/{}.script'.format(uuid.uuid4())
 
@@ -194,14 +209,21 @@ class SSHExecHandler(BaseAsyncSSHHandler):
             dest='as_user',
             help='Sudo as user'
         )
+        parser.add_argument(
+            '--var',
+            action='append',
+            dest='var',
+            help='Environment variables to set for the session (e.g. KEY=VALUE or KEY to pass from current env)'
+        )
 
     async def handle_connection(self, conn, value):
         await asyncssh.scp(self.script_source, (conn, self.script_target))
         await conn.run('chmod +x {}'.format(self.script_target))
+        command = self.script_target
         if self.as_user:
-            command = 'sudo -u {} {}'.format(self.as_user, self.script_target)
-        else:
-            command = self.script_target
+            command = 'sudo -E -u {} {}'.format(self.as_user, command)
+        if self.vars:
+            command = '{} {}'.format(format_env_vars(self.vars), command)
         response = await conn.run(command)
         await conn.run('rm {}'.format(self.script_target))
         result = {
