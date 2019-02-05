@@ -41,7 +41,7 @@ Now lets do something a little less useless. Lets use the "shell" streamer to ex
   {"stdout": "", "stderr": "Connection to slashdot.org 443 port [tcp/https] succeeded!\n", "exit_code": 0}
 ```
 
-Streamline modules aim to provide all the useful information in object form as output can then be customized with other streaming modules. For exampe, to take the above output and get just the exit code that tells us whether the port is open we can just add the `--headers` option to prefix each output with the original input and the `--extract exit_code` option to set the value to the `exit_code` property of each result:
+Streamline modules aim to provide all the useful information in object form as output can then be customized with other streaming modules. For exampe, to take the above output and get just the exit code that tells us whether the port is open we can just add the `headers` streamer to prefix each output with the original input and the `extract` streamer (with its `--selector` option) option to set the value to the `exit_code` property of each result:
 
 ```bash
   $ printf "www.google.com\nslashdot.org" | streamline -s shell extract headers -- "nc -zv {value} 443" --selector exit_code
@@ -55,6 +55,23 @@ There are many modules available that do asynchronous jobs and transformations t
 
 ```bash
 $ streamline --help
+
+=============== Streamline ===============
+
+
+usage: streamline [--generator GENERATOR] [--consumer CONSUMER]
+                  [-s [STREAMERS [STREAMERS ...]]] [-h]
+
+optional arguments:
+  --generator GENERATOR
+                        Entry Generator Module
+  --consumer CONSUMER   Entry Consumer/Writer Module
+  -s [STREAMERS [STREAMERS ...]], --streamers [STREAMERS [STREAMERS ...]]
+                        Additional streamers to apply (-s is optional)
+  -h, --help            Print help
+
+
+=============== Streamers ===============
 
 ::extract::
 	Description: Change the value to an attribute of the current value
