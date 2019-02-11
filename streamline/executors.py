@@ -12,6 +12,8 @@ from .utils import import_obj, inject_module, arg_help
 
 def parse_vars(args):
     env_vars = {}
+    if not args:
+        return env_vars
     for arg in args:
         if '=' in arg:
             key, value = arg.split('=', 1)
