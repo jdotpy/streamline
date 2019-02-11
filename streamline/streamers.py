@@ -320,8 +320,11 @@ async def split_lists(source):
             yield entry
             continue
 
-        for wrapped_value in entry_wrap(entry.value):
-            yield wrapped_value
+        sub_entries = []
+        for sub in entry.value:
+            new_entry = entry.clone()
+            new_entry.value = sub
+            yield new_entry
 
 @arg_help('Take any values that are an array and treat each value of an array as a separate input ')
 class Split(BaseStreamer):

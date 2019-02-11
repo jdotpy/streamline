@@ -112,3 +112,10 @@ def test_duplicate_module():
         '{"foo": {"bar": 1}}\n{"foo": {"bar": 2}}',
         '1\n2',
     )
+
+def test_clone_history():
+    do_cli_call(
+        'streamline py split_list headers -- "list(value)"',
+        'foo\nbar',
+        'foo: f\nfoo: o\nfoo: o\nbar: b\nbar: a\nbar: r',
+    )

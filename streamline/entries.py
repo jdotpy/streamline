@@ -1,3 +1,5 @@
+import copy
+
 class EntryFactory():
     def __init__(self, error_value=None):
         self.error_value = error_value
@@ -13,7 +15,7 @@ class EntryFactory():
         return entry
 
 class Entry():
-    def __init__(self, value, index=None, error_value=None):
+    def __init__(self, value=None, index=None, error_value=None):
         self.index = index
         self.history = [[value]]
         self.errors = []
@@ -53,6 +55,12 @@ class Entry():
     def error(self, e):
         self.errors.append(e)
         self.value = self.error_value
+
+    def clone(self):
+        new_clone = Entry(index=self.index, error_value=self.error_value)
+        new_clone.errors = copy.deepcopy(self.errors)
+        new_clone.history = copy.deepcopy(self.history)
+        return new_clone
 
     value = property(get_value, set_value)
 

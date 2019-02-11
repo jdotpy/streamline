@@ -7,7 +7,7 @@ setup(
     name = 'streamline',
     scripts=['bin/streamline'],
     packages=['streamline'],
-    version = '0.9.9',
+    version = '0.9.10',
     description = 'CLI tool for doing async tasks and transformations',
     long_description=long_description,
     long_description_content_type="text/markdown",
