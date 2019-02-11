@@ -34,6 +34,8 @@ def extract_path(data, path=None):
     for i, selector in enumerate(selectors):
         if isinstance(selector, IndexSelector):
             if selector.index == '*':
+                if result is None:
+                    return []
                 return [extract_path(entry, selectors[i + 1:]) for entry in result]
             else:
                 try:
@@ -41,7 +43,10 @@ def extract_path(data, path=None):
                 except (TypeError, KeyError, IndexError) as e:
                     result = None
         elif selector == '*':
-            values = result.values()
+            try:
+                values = result.values()
+            except Exception as e:
+                return []
             return [extract_path(value, selectors[i + 1:]) for value in values]
         else:
             if isinstance(result, dict):

@@ -46,8 +46,8 @@ def test_extraction_streamer():
     # Allow for * index keys that recurse
     do_streamer_test(
         streamers.ExtractionStreamer(selector='foo.numbers[*]').stream,
-        [{'foo': {'numbers': [1, 2, 3]}}],
-        [[1,2,3]],
+        [{'foo': {'numbers': [1, 2, 3]}}, {'foo': {'numbers': None}}],
+        [[1,2,3], []],
     )
 
     # Allow for * keys that recurse
