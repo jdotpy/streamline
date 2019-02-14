@@ -17,9 +17,9 @@ arg_help = utils.arg_help
 
 def get_eval_scope(entry):
     entry_scope = {'value': entry.value, 'input': entry.original_value, 'i': entry.index, 'index': entry.index}
-    global_scope = {**globals(), **entry_scope}
-    local_scope = {}
-    return global_scope, local_scope
+    scope = {**globals(), **entry_scope}
+    # Right now we're just exposing a single scope so that its treated like writing a python file at the global scope
+    return scope, scope
 
 class BaseStreamer():
     def __init__(self, **options):
@@ -76,7 +76,7 @@ class PyExecTransform(BaseStreamer):
                 else:
                     self.runner(self.code, global_scope, local_scope)
                     if 'result' in local_scope:
-                        entry.value = local_scope.get('result', None) 
+                        entry.value = local_scope.get('result')
                     else:
                         entry.value = local_scope.get('result')
             except Exception as e:
