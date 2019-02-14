@@ -15,6 +15,12 @@ from . import utils
 
 arg_help = utils.arg_help
 
+def get_eval_scope(entry):
+    entry_scope = {'value': entry.value, 'input': entry.original_value, 'i': entry.index, 'index': entry.index}
+    global_scope = {**globals(), **entry_scope}
+    local_scope = {}
+    return global_scope, local_scope
+
 class BaseStreamer():
     def __init__(self, **options):
         self.options = options
@@ -63,16 +69,16 @@ class PyExecTransform(BaseStreamer):
 
     async def stream(self, source):
         async for entry in source:
-            scope = {'value': entry.value, 'input': entry.original_value, 'i': entry.index, 'index': entry.index}
+            global_scope, local_scope = get_eval_scope(entry)
             try:
                 if self.expression:
-                    entry.value = self.runner(self.code, globals(), scope)
+                    entry.value = self.runner(self.code, global_scope, local_scope)
                 else:
-                    self.runner(self.code, globals(), scope)
-                    if 'result' in scope:
-                        entry.value = scope.get('result', None) 
+                    self.runner(self.code, global_scope, local_scope)
+                    if 'result' in local_scope:
+                        entry.value = local_scope.get('result', None) 
                     else:
-                        entry.value = scope.get('result')
+                        entry.value = local_scope.get('result')
             except Exception as e:
                 print(e)
                 if self.show_exceptions:
@@ -102,9 +108,9 @@ class PyExecFilter(BaseStreamer):
 
     async def stream(self, source):
         async for entry in source:
-            scope = {'value': entry.value, 'input': entry.original_value, 'i': entry.index, 'index': entry.index}
+            global_scope, local_scope = get_eval_scope(entry)
             try:
-                keep = eval(self.code, globals(), scope)
+                keep = eval(self.code, global_scope, local_scope)
             except Exception as e:
                 keep = False
                 if self.show_exceptions:

@@ -81,6 +81,15 @@ def test_py_exec_transform():
         ['Hi', 'Hello'],
     )
 
+    # Scope Creation
+    do_streamer_test(
+        streamers.PyExecTransform(
+            code="[value for i in range(2)]",
+        ).stream,
+        ['Hi', 'Hello'],
+        [['Hi', 'Hi',], ['Hello', 'Hello']],
+    )
+
 def test_py_exec_filter():
     # Expression
     do_streamer_test(
