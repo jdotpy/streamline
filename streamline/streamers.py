@@ -2,6 +2,7 @@ from collections import OrderedDict
 import traceback
 import argparse
 import asyncio
+import math
 import json
 import copy
 import re
@@ -605,9 +606,11 @@ class ProgressStreamer():
             self.complete_count += 1
         elif started:
             self.started_count += 1
-        complete_perc = round((self.complete_count / self.started_count) * 100,0)
+        complete_perc = math.floor((self.complete_count / self.started_count) * 100)
 
-        message = '{}/{} - {}% complete'.format(
+        loading_bar = ('#' * (complete_perc)) + ((100 - complete_perc) * ' ')
+        message = '|{}| ({}/{} - {}%)'.format(
+            loading_bar,
             self.complete_count,
             self.started_count,
             complete_perc,

@@ -69,6 +69,14 @@ optional arguments:
   -s [STREAMERS [STREAMERS ...]], --streamers [STREAMERS [STREAMERS ...]]
                         Additional streamers to apply (-s is optional)
   -h, --help            Print help
+  -p {buffer,stream-output,streaming}, --progress {buffer,stream-output,streaming}
+                        Print progress to stdout. ("buffer": buffers input and
+                        output, "stream-output" buffers only input, "stream"
+                        for no buffering at all)
+  -w WORKERS, --workers WORKERS
+                        Number of concurrent workers for any one async
+                        execution module to have
+
 
 
 =============== Streamers ===============
