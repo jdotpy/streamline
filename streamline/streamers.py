@@ -57,8 +57,7 @@ class PyExecTransform(BaseStreamer):
             default=False,
         )
 
-    def __init__(self, code=None, statement=False, show_exceptions=False):
-        self.show_exceptions = show_exceptions
+    def __init__(self, code=None, statement=False):
         self.expression = not statement
         self.runner = exec if statement else eval
         try:
@@ -80,12 +79,7 @@ class PyExecTransform(BaseStreamer):
                     else:
                         entry.value = local_scope.get('result')
             except Exception as e:
-                print(e)
-                if self.show_exceptions:
-                    entry.exception(e)
-                    traceback.print_exc()
-                else:
-                    continue
+                entry.exception(e)
             yield entry
 
 @arg_help('Filter out values that dont have a truthy result to a particular python expression', example='"\'foobar\' in value"')
@@ -98,8 +92,7 @@ class PyExecFilter(BaseStreamer):
             help='Python code to evaluate',
         )
 
-    def __init__(self, code=None, show_exceptions=False):
-        self.show_exceptions = show_exceptions
+    def __init__(self, code=None):
         try:
             self.code = compile(code, '<string::filter>', 'eval')
         except Exception as e:
@@ -113,8 +106,6 @@ class PyExecFilter(BaseStreamer):
                 keep = eval(self.code, global_scope, local_scope)
             except Exception as e:
                 keep = False
-                if self.show_exceptions:
-                    traceback.print_exc()
             if keep:
                 yield entry
 
@@ -199,25 +190,9 @@ class AsyncExecutor():
     """
     DEFAULT_WORKERS = 20
 
-    @classmethod
-    def args(cls, parser):
-        parser.add_argument(
-            '-w', '--workers',
-            type=int,
-            help='Number of concurrent workers for execution modules',
-            default=cls.DEFAULT_WORKERS,
-        )
-        parser.add_argument(
-            '-p', '--show-progress',
-            action='store_true',
-            help='Output progress bar',
-            default=False,
-        )
-
-    def __init__(self, executor=None, show_progress=False, workers=DEFAULT_WORKERS, loop=None):
+    def __init__(self, executor=None, workers=DEFAULT_WORKERS, loop=None):
         self.executor = executor
         self.output_queue = asyncio.Queue()
-        self.show_progress = show_progress
         self.worker_count = workers or self.DEFAULT_WORKERS
 
         # State data
@@ -226,21 +201,6 @@ class AsyncExecutor():
         self.active_count = 0
         self.all_enqueued = False
         self.loop = loop or asyncio.get_event_loop()
-
-    def _show_progress(self, newline=False):
-         if not self.show_progress:
-             return
-
-         sys.stdout.write('\r {done} out of {total} tasks complete - {percent_done}% (running={running}; pending={pending})'.format(
-             done=self.complete_count,
-             total=self.entry_count,
-             percent_done=int(self.complete_count / self.entry_count * 100),
-             running=self.active_count,
-             pending='??'
-         ))
-         if newline:
-             # Finish with a newline
-             print('')
 
     def _save_result(self, entry):
         self.complete_count += 1
@@ -265,8 +225,6 @@ class AsyncExecutor():
                 continue
             self.output_queue.task_done()
             yield entry
-            self._show_progress()
-        self._show_progress(newline=True)
 
     async def _worker(self):
         while True:
@@ -623,7 +581,6 @@ async def history_all(source):
         entry.value = entry.get_history()
         yield entry
 
-
 # entry-transformations
 STREAMERS.update({
     'history:push': history_push,
@@ -632,3 +589,57 @@ STREAMERS.update({
     'history:reset': history_reset,
     'history:values': history_all,
 })
+
+# Stateful hidden streamers
+class ProgressStreamer():
+    def __init__(self, buffer_start=True, buffer_end=True):
+        self.started_count = 0
+        self.complete_count = 0
+        self.in_progress_count = 0
+        self.buffer_start = buffer_start
+        self.buffer_end = buffer_end
+        self.all_loaded = False
+
+    def update_progress(self, complete=False, started=False):
+        if complete:
+            self.complete_count += 1
+        elif started:
+            self.started_count += 1
+        complete_perc = round((self.complete_count / self.started_count) * 100,0)
+
+        message = '{}/{} - {}% complete'.format(
+            self.complete_count,
+            self.started_count,
+            complete_perc,
+        )
+        message = '\r' + message
+        sys.stdout.write(message)
+        if self.all_loaded and self.complete_count == self.started_count:
+            sys.stdout.write('\n')
+
+    async def streamer_start(self, source):
+        if self.buffer_start:
+            started = []
+            async for entry in source:
+                started.append(entry)
+                self.update_progress(started=True)
+            for entry in started:
+                yield entry
+        else:
+            async for entry in source:
+                self.update_progress(started=True)
+                yield entry
+        self.all_loaded = True
+
+    async def streamer_end(self, source):
+        if self.buffer_end:
+            done = []
+            async for entry in source:
+                done.append(entry)
+                self.update_progress(complete=True)
+            for entry in done:
+                yield entry
+        else:
+            async for entry in source:
+                self.update_progress(complete=True)
+                yield entry

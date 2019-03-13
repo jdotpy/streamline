@@ -39,6 +39,18 @@ def streamline_command(args):
         default=False,
         help='Print help',
     )
+    cmd_parser.add_argument(
+        '-p', '--progress',
+        default=None,
+        choices=['buffer', 'stream-output', 'streaming'],
+        help='Print progress to stdout. ("buffer": buffers input and output, "stream-output" buffers only input, "stream" for no buffering at all)',
+    )
+    cmd_parser.add_argument(
+        '-w', '--workers',
+        type=int,
+        default=streamers.AsyncExecutor.DEFAULT_WORKERS,
+        help='Number of concurrent workers for any one async execution module to have',
+    )
     if args and '-s' not in args:
         args.insert(0, '-s'),
     args, extra_args = cmd_parser.parse_known_args(args)
@@ -81,7 +93,7 @@ def streamline_command(args):
                 print('\n\n')
                 print('=' * 15 + ' Streamer::{} '.format(streamer_name) + '=' * 15)
                 print('\n')
-                load_streamer(streamer_name, extra_args, print_help=True)
+                load_streamer(streamer_name, extra_args, print_help=True, ae_args={'workers': args.workers})
         else:
             print('\n')
             print('=' * 15 + ' Streamers ' + '=' * 15)
@@ -106,7 +118,7 @@ def streamline_command(args):
             if shorthand_match:
                 shorthand_options = shorthand_match.groupdict()
                 # Load the main streamer
-                main_streamer, extra_args = load_streamer(shorthand_options['streamer'], extra_args)
+                main_streamer, extra_args = load_streamer(shorthand_options['streamer'], extra_args, ae_args={'workers': args.workers})
 
                 # Compose the sub-command
                 command_streamers.append(streamers.history_push)
@@ -128,13 +140,20 @@ def streamline_command(args):
                     command_streamers.append(combiner.stream)
 
             else:
-                streamer, extra_args = load_streamer(streamer_name, extra_args)
+                streamer, extra_args = load_streamer(streamer_name, extra_args, ae_args={'workers': args.workers})
                 command_streamers.append(streamer)
 
     # Ensure we don't have any extra arguments
     if extra_args:
         sys.stderr.write('Extra arguments found: {}\n'.format(' '.join(extra_args)))
         sys.exit(2)
+
+    # Override streamers
+    if args.progress:
+        buffer_start = args.progress in ('buffer', 'stream-output')
+        buffer_end = args.progress in ('buffer')
+        progress = streamers.ProgressStreamer(buffer_start=buffer_start, buffer_end=buffer_end)
+        command_streamers = [progress.streamer_start, *command_streamers, progress.streamer_end]
 
     future = pipe(generator.stream(), command_streamers, consumer=consumer.stream)
 
@@ -143,7 +162,7 @@ def streamline_command(args):
     task = asyncio.ensure_future(future, loop=loop)
     loop.run_until_complete(task)
 
-def load_streamer(path, arg_list, options=None, print_help=False):
+def load_streamer(path, arg_list, options=None, print_help=False, ae_args=None):
     if arg_list and arg_list[0] == '--':
         arg_list = arg_list[1:]
     kwargs = {}
@@ -164,8 +183,6 @@ def load_streamer(path, arg_list, options=None, print_help=False):
             add_help=False,
             usage='streamline -s %(prog)s -- [options]',
         )
-        if hasattr(Streamer, 'async_handler'):
-            streamers.AsyncExecutor.args(streamer_parser)
         if hasattr(Streamer, 'args'):
             Streamer.args(streamer_parser)
         streamer_parser.print_help()
@@ -185,10 +202,7 @@ def load_streamer(path, arg_list, options=None, print_help=False):
             executor = Executor
 
         # Now build the wrapper
-        ae_parser = argparse.ArgumentParser(add_help=False)
-        streamers.AsyncExecutor.args(ae_parser)
-        ae_args, arg_list = ae_parser.parse_known_args(arg_list)
-        ae = streamers.AsyncExecutor(executor, **ae_args.__dict__)
+        ae = streamers.AsyncExecutor(executor, **ae_args)
         return ae.stream, arg_list
     else:
         if type(Streamer) == type:
