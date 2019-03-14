@@ -31,6 +31,22 @@ async def get_client_keys():
     keys = await client.get_keys()
     return keys
 
+async def stream_ssh_command(conn, command, output_target):
+    with open(output_target, 'w', buffering=1) as out_file_fd:
+        process = await conn.create_process(command, stderr=asyncssh.STDOUT)
+        while True:
+            try:
+                stdout, _ = await asyncio.wait_for(process.communicate(), timeout=2)
+                out_file_fd.write(stdout)
+                break
+            except asyncio.TimeoutError:
+                stdout, _ = process.collect_output()
+                out_file_fd.write(stdout)
+                continue
+    return process
+
+
+
 class BaseAsyncSSHHandler():
     async_handler = True
 
@@ -159,21 +175,37 @@ class SSHHandler(BaseAsyncSSHHandler):
             dest='as_user',
             help='Sudo as user'
         )
+        parser.add_argument(
+            '--stream-output',
+            help='Where to stream output to (default is to return stdout)'
+        )
 
     async def handle_connection(self, conn, value):
         if self.as_user:
             command = 'sudo -u {} {}'.format(self.as_user, self.command)
         else:
             command = self.command
-        response = await conn.run(command)
-        result = {
-            'host': value,
-            'command': command,
-            'exit_code': response.exit_status,
-            'success': response.exit_status == 0,
-            'stdout': response.stdout,
-            'stderr': response.stderr,
-        }
+
+        stream_target = self.options.get('stream_output', None)
+        if stream_target:
+            out_file = os.path.expanduser(stream_target).replace('{value}', value)
+            process = await stream_ssh_command(conn, command, out_file)
+            result = {
+                'host': value,
+                'command': command,
+                'exit_code': process.exit_status,
+                'success': process.exit_status == 0,
+            }
+        else:
+            response = await conn.run(command)
+            result = {
+                'host': value,
+                'command': command,
+                'exit_code': response.exit_status,
+                'success': response.exit_status == 0,
+                'stdout': response.stdout,
+                'stderr': response.stderr,
+            }
         return result
 
 @arg_help('Copy a script to target machine and execute', example='~/dostuff.sh')
@@ -217,6 +249,10 @@ class SSHExecHandler(BaseAsyncSSHHandler):
             dest='var',
             help='Environment variables to set for the session (e.g. KEY=VALUE or KEY to pass from current env)'
         )
+        parser.add_argument(
+            '--stream-output',
+            help='Where to stream output to (default is to return stdout)'
+        )
 
     async def handle_connection(self, conn, value):
         await asyncssh.scp(self.script_source, (conn, self.script_target))
@@ -226,16 +262,29 @@ class SSHExecHandler(BaseAsyncSSHHandler):
             command = 'sudo -E -u {} {}'.format(self.as_user, command)
         if self.vars:
             command = '{} {}'.format(format_env_vars(self.vars), command)
-        response = await conn.run(command)
+        
+        stream_target = self.options.get('stream_output', None)
+        if stream_target:
+            out_file = os.path.expanduser(stream_target).replace('{value}', value)
+            process = await stream_ssh_command(conn, command, out_file)
+            result = {
+                'host': value,
+                'command': command,
+                'exit_code': process.exit_status,
+                'success': process.exit_status == 0,
+            }
+        else:
+            response = await conn.run(command)
+            result = {
+                'host': value,
+                'command': command,
+                'exit_code': response.exit_status,
+                'success': response.exit_status == 0,
+                'stdout': response.stdout,
+                'stderr': response.stderr,
+            }
+
         await conn.run('rm {}'.format(self.script_target))
-        result = {
-            'host': value,
-            'command': command,
-            'exit_code': response.exit_status,
-            'success': response.exit_status == 0,
-            'stdout': response.stdout,
-            'stderr': response.stderr,
-        }
         return result
 
 @arg_help('Use a template to execute an HTTP request for each value', example='"https://{value}/"')
