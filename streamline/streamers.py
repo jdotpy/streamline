@@ -606,7 +606,7 @@ class ProgressStreamer():
             self.complete_count += 1
         elif started:
             self.started_count += 1
-        complete_perc = math.floor((self.complete_count / self.started_count) * 100)
+        complete_perc = min(100, math.floor((self.complete_count / self.started_count) * 100))
 
         loading_bar = ('#' * (complete_perc)) + ((100 - complete_perc) * ' ')
         message = '|{}| ({}/{} - {}%)'.format(
