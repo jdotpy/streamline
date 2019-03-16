@@ -1,1 +1,2 @@
+unset STREAMLINE_CLOSING_NEWLINE
 pytest -s -vvvv

@@ -58,8 +58,8 @@ class Entry():
 
     def clone(self):
         new_clone = Entry(index=self.index, error_value=self.error_value)
-        new_clone.errors = copy.deepcopy(self.errors)
-        new_clone.history = copy.deepcopy(self.history)
+        new_clone.errors = self.errors.copy()
+        new_clone.history = [h.copy() for h in self.history]
         return new_clone
 
     value = property(get_value, set_value)
