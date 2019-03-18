@@ -46,7 +46,6 @@ async def stream_ssh_command(conn, command, output_target):
     return process
 
 
-
 class BaseAsyncSSHHandler():
     async_handler = True
 
@@ -57,6 +56,9 @@ class BaseAsyncSSHHandler():
 
         # Hook for other things
         self.initialize()
+
+        # Cache key
+        self._use_key_cache = os.environ.get('STREAMLINE_SSH_AGENT_CACHE', None) == '1'
 
     def initialize(self):
         pass
@@ -74,7 +76,10 @@ class BaseAsyncSSHHandler():
         return client_keys
 
     async def handle(self, value):
-        client_keys = await self._get_client_keys()
+        if self._use_key_cache:
+            client_keys = await self._get_client_keys()
+        else:
+            client_keys = await get_client_keys()
 
         async with asyncssh.connect(value.strip(), known_hosts=None, client_keys=client_keys) as conn:
             return await self.handle_connection(conn, value)
