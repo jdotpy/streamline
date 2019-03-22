@@ -156,6 +156,16 @@ def test_value_breakdown():
             {'value': 'Z', 'count': 1},
         ],
     )
+    do_streamer_test(
+        streamers.ValueBreakdown(group_by='value,value[0]').stream,
+        ['A', 'B', 'A', 'B', 'B', 'C', 'Z'],
+        [
+            {'value': ('A','A'), 'count': 2},
+            {'value': ('B','B'), 'count': 3},
+            {'value': ('C','C'), 'count': 1},
+            {'value': ('Z','Z'), 'count': 1},
+        ],
+    )
 
     # inputs mode
     do_streamer_test(

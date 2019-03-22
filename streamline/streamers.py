@@ -291,6 +291,13 @@ async def split_lists(source):
             new_entry.value = sub
             yield new_entry
 
+@arg_help('Replace the value with the original input')
+async def input_values(source):
+    """ Splits arrays into multiple entries """
+    async for entry in source:
+        entry.value = entry.original_value
+        yield new_entry
+
 @arg_help('Take any values that are an array and treat each value of an array as a separate input ')
 class Split(BaseStreamer):
     """ Splits arrays into multiple entries """
@@ -337,27 +344,44 @@ class ValueBreakdown(BaseStreamer):
             default=False,
             help='Instead of replacing values with the result breakdown, append a single entry at the end with the data',
         )
+        parser.add_argument(
+            '--group-by',
+            default='value',
+            help='Which value to do the breakdown by',
+        )
 
-    def __init__(self, inputs=False, append_summary=False):
+    def __init__(self, inputs=False, append_summary=False, group_by=None):
         self.inputs = inputs
         self.append = append_summary
+        if isinstance(group_by, list):
+            self.group_by = group_by
+        elif group_by:
+            self.group_by = group_by.split(',')
+        else:
+            self.group_by = ['value']
+        self.group_by_extractors = [Extractor(gb, value_symbol=True) for gb in self.group_by]
 
     async def stream(self, source):
         stats = OrderedDict()
         async for entry in source:
-            if entry.value in stats:
-                value_stats = stats[entry.value]
+            group_by_value = [e.extract(entry.value) for e in self.group_by_extractors]
+            if len(group_by_value) == 1:
+                group_by_value = group_by_value[0]
+            else:
+                group_by_value = tuple(group_by_value)
+            if group_by_value in stats:
+                value_stats = stats[group_by_value]
                 value_stats['count'] += 1
                 if self.inputs:
                     value_stats['inputs'].append(entry.original_value)
             else:
                 metadata = {
-                    'value': entry.value,
+                    'value': group_by_value,
                     'count': 1,
                 }
                 if self.inputs:
                     metadata['inputs'] = [entry.original_value]
-                stats[entry.value] = metadata
+                stats[group_by_value] = metadata
 
             if self.append:
                 yield entry
@@ -540,6 +564,7 @@ STREAMERS = {
     'split': Split,
     'breakdown': ValueBreakdown,
     'headers': InputHeaders,
+    'inputs': input_values,
     'filter_out_errors': filter_out_errors,
     'errors': error_values,
     'buffer': StreamingBuffer,

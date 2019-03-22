@@ -66,3 +66,6 @@ class Extractor():
 
     def extract(self, data):
         return extract_path(data, self.selectors)
+
+    def __call__(self, data):
+        return self.extract(self, data)
