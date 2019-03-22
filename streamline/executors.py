@@ -26,11 +26,6 @@ def format_env_vars(env_vars):
     pairs = ['{}="{}"'.format(key, value) for key, value in env_vars.items()]
     return ' '.join(pairs)
 
-async def get_client_keys():
-    client = await asyncssh.connect_agent()
-    keys = await client.get_keys()
-    return keys
-
 async def stream_ssh_command(conn, command, output_target):
     with open(output_target, 'w', buffering=1) as out_file_fd:
         process = await conn.create_process(command, stderr=asyncssh.STDOUT)
@@ -52,36 +47,15 @@ class BaseAsyncSSHHandler():
     def __init__(self, **options):
         inject_module('asyncssh', globals())
         self.options = options
-        self.client_keys = None
 
         # Hook for other things
         self.initialize()
 
-        # Cache key
-        self._use_key_cache = os.environ.get('STREAMLINE_SSH_AGENT_CACHE', None) == '1'
-
     def initialize(self):
         pass
 
-    async def _get_client_keys(self):
-        if self.client_keys:
-            return self.client_keys
-        elif hasattr(self, '_client_key_future'):
-            await asyncio.wait([self._client_key_future])
-            return self.client_keys
-
-        self._client_key_future = asyncio.ensure_future(get_client_keys())
-        client_keys = await self._client_key_future
-        self.client_keys = client_keys
-        return client_keys
-
     async def handle(self, value):
-        if self._use_key_cache:
-            client_keys = await self._get_client_keys()
-        else:
-            client_keys = await get_client_keys()
-
-        async with asyncssh.connect(value.strip(), known_hosts=None, client_keys=client_keys) as conn:
+        async with asyncssh.connect(value.strip(), known_hosts=None) as conn:
             return await self.handle_connection(conn, value)
 
 @arg_help('Treat each value as a host to connect to. Copy a file to or from this host', example='"/tmp/file.txt" "{value}:/tmp/file.txt"')
