@@ -296,7 +296,7 @@ async def input_values(source):
     """ Splits arrays into multiple entries """
     async for entry in source:
         entry.value = entry.original_value
-        yield new_entry
+        yield entry
 
 @arg_help('Take any values that are an array and treat each value of an array as a separate input ')
 class Split(BaseStreamer):
