@@ -277,9 +277,9 @@ class HTTPHandler():
 
         self.auth = None
         if auth:
-            self.auth = tuple(auth.split(':'))
+            self.auth = tuple(auth.split(':', 1))
         elif 'STREAMLINE_HTTP_AUTH' in os.environ:
-            self.auth = tuple(os.environ.get('STREAMLINE_HTTP_AUTH').split(':'))
+            self.auth = tuple(os.environ.get('STREAMLINE_HTTP_AUTH').split(':', 1))
         if self.auth and len(self.auth) != 2:
             raise ValueError('Incorrect auth value. Format is "user:password"')
 
