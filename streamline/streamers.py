@@ -80,7 +80,7 @@ class PyExecTransform(BaseStreamer):
                     else:
                         entry.value = local_scope.get('result')
             except Exception as e:
-                entry.exception(e)
+                entry.error(e)
             yield entry
 
 @arg_help('Filter out values that dont have a truthy result to a particular python expression', example='"\'foobar\' in value"')
