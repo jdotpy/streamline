@@ -4,6 +4,7 @@ import asyncio
 import urllib3
 import uuid
 import shlex
+import sys
 import os
 
 urllib3.disable_warnings()
@@ -26,8 +27,13 @@ def format_env_vars(env_vars):
     pairs = ['{}="{}"'.format(key, value) for key, value in env_vars.items()]
     return ' '.join(pairs)
 
-async def stream_ssh_command(conn, command, output_target):
-    with open(output_target, 'w', buffering=1) as out_file_fd:
+async def stream_ssh_command(conn, command, output_target, append=False):
+    if output_target == '-':
+        out_file_fd = sys.stdout
+    else:
+        mode = 'a' if append else 'w'
+        out_file_fd = open(output_target, mode, buffering=1)
+    try:
         process = await conn.create_process(command, stderr=asyncssh.STDOUT)
         while True:
             try:
@@ -38,6 +44,9 @@ async def stream_ssh_command(conn, command, output_target):
                 stdout, _ = process.collect_output()
                 out_file_fd.write(stdout)
                 continue
+    finally:
+        if output_target != '-':
+            out_file_fd.close()
     return process
 
 
@@ -158,17 +167,24 @@ class SSHHandler(BaseAsyncSSHHandler):
             '--stream-output',
             help='Where to stream output to (default is to return stdout)'
         )
+        parser.add_argument(
+            '--stream-append',
+            default=False,
+            action='store_true',
+            help='Append to streaming output instead of overwriting'
+        )
 
     async def handle_connection(self, conn, value):
         if self.as_user:
-            command = 'sudo -u {} {}'.format(self.as_user, self.command)
+            command = 'sudo -H -u {} {}'.format(self.as_user, self.command)
         else:
             command = self.command
 
         stream_target = self.options.get('stream_output', None)
+        stream_append = self.options.get('stream_append', False)
         if stream_target:
             out_file = os.path.expanduser(stream_target).replace('{value}', value)
-            process = await stream_ssh_command(conn, command, out_file)
+            process = await stream_ssh_command(conn, command, out_file, append=stream_append)
             result = {
                 'host': value,
                 'command': command,
@@ -232,20 +248,27 @@ class SSHExecHandler(BaseAsyncSSHHandler):
             '--stream-output',
             help='Where to stream output to (default is to return stdout)'
         )
+        parser.add_argument(
+            '--stream-append',
+            default=False,
+            action='store_true',
+            help='Append to streaming output instead of overwriting'
+        )
 
     async def handle_connection(self, conn, value):
         await asyncssh.scp(self.script_source, (conn, self.script_target))
         await conn.run('chmod +x {}'.format(self.script_target))
         command = self.script_target
         if self.as_user:
-            command = 'sudo -E -u {} {}'.format(self.as_user, command)
+            command = 'sudo -H -u {} {}'.format(self.as_user, command)
         if self.vars:
             command = '{} {}'.format(format_env_vars(self.vars), command)
         
         stream_target = self.options.get('stream_output', None)
+        stream_append = self.options.get('stream_append', False)
         if stream_target:
             out_file = os.path.expanduser(stream_target).replace('{value}', value)
-            process = await stream_ssh_command(conn, command, out_file)
+            process = await stream_ssh_command(conn, command, out_file, append=stream_append)
             result = {
                 'host': value,
                 'command': command,
