@@ -52,9 +52,17 @@ async def stream_ssh_command(conn, command, output_target, append=False):
 
 class BaseAsyncSSHHandler():
     async_handler = True
+    connection_options = {
+        'known_hosts': None,
+        'keepalive_interval': 30,
+        'keepalive_count_max': sys.maxsize,
+    }
 
     def __init__(self, **options):
         inject_module('asyncssh', globals())
+        if not hasattr(asyncssh.connection, '_DEFAULT_KEEPALIVE_INTERVAL'):
+            print('asyncssh>1.16 required')
+            sys.exit(10)
         self.options = options
 
         # Hook for other things
@@ -64,7 +72,7 @@ class BaseAsyncSSHHandler():
         pass
 
     async def handle(self, value):
-        async with asyncssh.connect(value.strip(), known_hosts=None) as conn:
+        async with asyncssh.connect(value.strip(), **self.connection_options) as conn:
             return await self.handle_connection(conn, value)
 
 @arg_help('Treat each value as a host to connect to. Copy a file to or from this host', example='"/tmp/file.txt" "{value}:/tmp/file.txt"')
@@ -271,7 +279,6 @@ class SSHExecHandler(BaseAsyncSSHHandler):
             process = await stream_ssh_command(conn, command, out_file, append=stream_append)
             result = {
                 'host': value,
-                'command': command,
                 'exit_code': process.exit_status,
                 'success': process.exit_status == 0,
             }
@@ -279,7 +286,6 @@ class SSHExecHandler(BaseAsyncSSHHandler):
             response = await conn.run(command)
             result = {
                 'host': value,
-                'command': command,
                 'exit_code': response.exit_status,
                 'success': response.exit_status == 0,
                 'stdout': response.stdout,
