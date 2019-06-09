@@ -554,6 +554,44 @@ class ReadFileStreamer(BaseStreamer):
                 entry.value = contents
             yield entry
 
+@arg_help('Perform mathmatical statistics on a given numeric value', example='--path value')
+class StatsStreamer(BaseStreamer):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--path',
+            default='value',
+            help='Where to read the numeric value from',
+        )
+
+    def initialize(self):
+        self.extractor = Extractor(self.options.get('path', None), value_symbol=True)
+
+    async def stream(self, source):
+        stats = {
+            'count': 0,
+            'sum': 0,
+            'min': None,
+            'max': None,
+        }
+        async for entry in source:
+            value = self.extractor.extract(entry.value)
+            try:
+                num = float(value)
+            except Exception as e:
+                continue
+            stats['count'] += 1
+            stats['sum'] += num
+            if stats['min'] is None or num < stats['min']:
+                stats['min'] = num
+            if stats['max'] is None or num > stats['max']:
+                stats['max'] = num
+        if stats['count'] == 0:
+            stats['average'] = 0
+        else:
+            stats['average'] = stats['sum'] / stats['count']
+        yield Entry(stats)
+
 STREAMERS = {
     'extract': ExtractionStreamer,
     'py': PyExecTransform,
@@ -573,6 +611,7 @@ STREAMERS = {
     'head': HeadStreamer,
     'readfile': ReadFileStreamer,
     'combine': Combiner,
+    'stats': StatsStreamer,
 }
 # Add executors that need to be wrapped with AsyncExecutor
 STREAMERS.update(executors.EXECUTORS)

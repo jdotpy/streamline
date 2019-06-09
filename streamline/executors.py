@@ -1,13 +1,10 @@
 import subprocess
 import argparse
 import asyncio
-import urllib3
 import uuid
 import shlex
 import sys
 import os
-
-urllib3.disable_warnings()
 
 from .utils import import_obj, inject_module, arg_help
 
