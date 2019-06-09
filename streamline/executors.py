@@ -1,13 +1,14 @@
 import subprocess
 import argparse
 import asyncio
-import urllib3
 import uuid
 import shlex
 import sys
 import os
 
-urllib3.disable_warnings()
+def _silence_urllib_warnings():
+    import urllib3
+    urllib3.disable_warnings()
 
 from .utils import import_obj, inject_module, arg_help
 
@@ -303,6 +304,7 @@ class HTTPHandler():
         self.url = url
         self.method = method
         inject_module('requests', globals())
+        _silence_urllib_warnings()
 
         self.auth = None
         if auth:

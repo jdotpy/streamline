@@ -3,6 +3,9 @@ import json
 import sys
 import os
 
+def strip_nulls(source):
+    return {key: value for key, value in source.items() if value is not None}
+
 def get_file_io(name, write=False):
     # Test for file-like objects we can use first
     if hasattr(name, 'write') and write:

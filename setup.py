@@ -16,6 +16,9 @@ setup(
     url = 'https://github.com/jdotpy/streamline',
     download_url = 'https://github.com/jdotpy/streamline/tarball/master',
     keywords = ['tools'],
+    install_requires=[
+        'pyyaml',
+    ],
     classifiers = [
         "Programming Language :: Python :: 3",
     ],
