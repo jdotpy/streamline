@@ -307,7 +307,6 @@ class Split(BaseStreamer):
     def args(cls, parser):
         parser.add_argument(
             '--delimiter',
-            action='store_true',
             default=cls.DEFAULT_DELIMITER,
             help='Regular expression pattern on which to split',
         )
