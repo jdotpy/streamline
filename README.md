@@ -202,6 +202,69 @@ streamline -s http --help
 ```
 
 
+## YAML support
+
+YAML files defining the streamers and their options is supported. 
+
+Given the following yaml file:
+
+```yaml
+streamers:
+ -
+    name: split
+ -
+    name: http
+    output: code
+    input: value
+    target: status_code
+    options:
+      url: 'https://{value}'`
+```
+
+It could be used to split a string of domains and get the http code for each one:
+
+```bash
+$ echo "www.google.com www.slashdot.org" | streamline -y http_codes.yaml
+{"base": "www.google.com", "status_code": 200}
+{"base": "www.slashdot.org", "status_code": 200}
+```
+
+
+
+You can also specify the generator and consumer in the same way. Given the below yaml and csv file:
+```yaml
+generator:
+  name: csv
+  options:
+    input: domains.csv
+consumer:
+  name: csv
+streamers:
+  -
+     name: http
+     output: code
+     input: domain
+     target: status_code
+     options:
+       url: 'https://{value}'
+```
+
+```
+domain,label
+www.google.com,The famous big B
+www.slashdot.org,Mosh pit of opinions
+```
+
+You can use it the following way:
+```bash
+$ streamline -y http_codes.yaml 
+domain,label,status_code
+www.google.com,The famous big B,200
+www.slashdot.org,Mosh pit of opinions,200
+```
+
+
+
 ## Technical Vocabulary
 
 * Entry: A small wrapper around a value being passed along through the stream. Commonly a single line of input.

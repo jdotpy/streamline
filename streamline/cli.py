@@ -206,7 +206,7 @@ def streamline_command(args):
                 print('\n\n')
                 print('=' * 15 + ' Streamer::{} '.format(streamer_name) + '=' * 15)
                 print('\n')
-                load_streamer(streamer_name, extra_args, print_help=True, ae_args=ae_args)
+                load_streamer(streamer_name, print_help=True, ae_args=ae_args)
         else:
             print('\n')
             print('=' * 15 + ' Streamers ' + '=' * 15)

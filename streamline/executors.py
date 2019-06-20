@@ -301,7 +301,7 @@ class SSHExecHandler(BaseAsyncSSHHandler):
 class HTTPHandler():
     async_handler = True
 
-    def __init__(self, url=None, method=None, auth=None, no_verify=False):
+    def __init__(self, url=None, method='GET', auth=None, no_verify=False):
         self.url = url
         self.method = method
         inject_module('requests', globals())
@@ -316,7 +316,6 @@ class HTTPHandler():
             raise ValueError('Incorrect auth value. Format is "user:password"')
 
         self.verify = not no_verify
-
 
     @classmethod
     def args(cls, parser):
