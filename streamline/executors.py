@@ -6,11 +6,12 @@ import shlex
 import sys
 import os
 
+from .utils import import_obj, inject_module, arg_help
+
+
 def _silence_urllib_warnings():
     import urllib3
     urllib3.disable_warnings()
-
-from .utils import import_obj, inject_module, arg_help
 
 def parse_vars(args):
     env_vars = {}

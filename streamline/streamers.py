@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from operator import itemgetter
 import traceback
 import argparse
 import asyncio
@@ -307,7 +308,6 @@ class Split(BaseStreamer):
     def args(cls, parser):
         parser.add_argument(
             '--delimiter',
-            action='store_true',
             default=cls.DEFAULT_DELIMITER,
             help='Regular expression pattern on which to split',
         )
@@ -554,6 +554,105 @@ class ReadFileStreamer(BaseStreamer):
                 entry.value = contents
             yield entry
 
+@arg_help('Perform mathmatical statistics on a given numeric value', example='--path value')
+class StatsStreamer(BaseStreamer):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--path',
+            default='value',
+            help='Where to read the numeric value from',
+        )
+
+    def initialize(self):
+        self.extractor = Extractor(self.options.get('path', None), value_symbol=True)
+
+    async def stream(self, source):
+        stats = {
+            'count': 0,
+            'sum': 0,
+            'min': None,
+            'max': None,
+        }
+        async for entry in source:
+            value = self.extractor.extract(entry.value)
+            try:
+                num = float(value)
+            except Exception as e:
+                continue
+            stats['count'] += 1
+            stats['sum'] += num
+            if stats['min'] is None or num < stats['min']:
+                stats['min'] = num
+            if stats['max'] is None or num > stats['max']:
+                stats['max'] = num
+        if stats['count'] == 0:
+            stats['average'] = 0
+        else:
+            stats['average'] = stats['sum'] / stats['count']
+        yield Entry(stats)
+
+@arg_help('Sort entries alphanumerically or numerically given a value or subvalue', example='--path value --numeric')
+class SortStreamer(BaseStreamer):
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--path',
+            default='value',
+            help='Where to read the sort value from',
+        )
+        parser.add_argument(
+            '--numeric',
+            default=False,
+            action='store_true',
+            help='Force the sort to compare numerically and fail otherwise',
+        )
+        parser.add_argument(
+            '--descending',
+            default=False,
+            action='store_true',
+            help='Sort in descending fasion sort order',
+        )
+
+    def initialize(self):
+        self.extractor = Extractor(self.options.get('path', None), value_symbol=True)
+        self.numeric = self.options.get('numeric', False)
+        self.descending = self.options.get('descending', False)
+
+    def _extract_sort_value(self, entry):
+        sort_value = self.extractor.extract(entry.value)
+        if self.numeric:
+            try:
+                sort_value = float(sort_value)
+            except Exception as e:
+                sort_value = None
+        elif sort_value is not None:
+            sort_value = str(sort_value)
+        return sort_value
+
+    async def stream(self, source):
+        # Buffer all entries and then sort after all values have been calculated
+        items_with_value = []
+        items_without_value = []
+        async for entry in source:
+            sort_value = self._extract_sort_value(entry)
+            if sort_value is None:
+                items_without_value.append(entry)
+            else:
+                items_with_value.append((entry, sort_value))
+
+        result = []
+        sorted_items = [e[0] for e in sorted(items_with_value, key=itemgetter(1), reverse=self.descending)]
+        if self.descending:
+            result.extend(sorted_items)
+            result.extend(items_without_value)
+        else:
+            result.extend(items_without_value)
+            result.extend(sorted_items)
+
+        for entry in result:
+            yield entry
+
 STREAMERS = {
     'extract': ExtractionStreamer,
     'py': PyExecTransform,
@@ -573,6 +672,8 @@ STREAMERS = {
     'head': HeadStreamer,
     'readfile': ReadFileStreamer,
     'combine': Combiner,
+    'stats': StatsStreamer,
+    'sort': SortStreamer,
 }
 # Add executors that need to be wrapped with AsyncExecutor
 STREAMERS.update(executors.EXECUTORS)
