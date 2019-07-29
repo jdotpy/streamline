@@ -363,13 +363,33 @@ class HTTPHandler():
 @arg_help('Sleep for a second (or for {value} seconds) for each entry making no change to its value')
 class SleepHandler():
     async_handler = True
+    value_flag = '{value}'
     
+    def __init__(self, seconds=None):
+        if seconds == self.value_flag:
+            self.seconds = seconds
+        else:
+            try:
+                self.seconds = float(seconds)
+            except Exception:
+                self.seconds = 1
+
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            '--seconds',
+            help='Number of seconds to sleep ({value} to treat input as sleep time)'
+        )
+
     async def handle(self, value):
-        try:
-            time = float(value)
-        except Exception as e:
-            time = 1
-        await asyncio.sleep(time)
+        if self.seconds == self.value_flag:
+            try:
+                sleep_time = float(value)
+            except Exception as e:
+                sleep_time = 1
+        else:
+            sleep_time = self.seconds
+        await asyncio.sleep(sleep_time)
         return value
 
 EXECUTORS = {
