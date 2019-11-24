@@ -22,6 +22,14 @@ def get_file_io(name, write=False):
     # Assume this is a file
     return open(name, 'w' if write else 'r', 1)
 
+def get_env_as(var, constructor, default=0):
+    if var not in os.environ:
+        return default
+    try:
+        return constructor(os.environ[var])
+    except Exception as e:
+        return default
+
 def import_obj(path):
     # Ensure the current directory is on the path
     current_dir = os.path.abspath('.')

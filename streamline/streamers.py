@@ -190,7 +190,7 @@ class AsyncExecutor():
         helpful for controlling resource usage on the host machine or remote systems used by the job. For this reason
         I'm re-implementing a worker-style executor pool which could be used with jobs that are threaded or async.
     """
-    DEFAULT_WORKERS = 20
+    DEFAULT_WORKERS = utils.get_env_as('STREAMLINE_WORKER_COUNT', int, default=20)
 
     def __init__(self, executor=None, workers=DEFAULT_WORKERS, loop=None):
         self.executor = executor
@@ -250,7 +250,7 @@ class AsyncExecutor():
 
 @arg_help('No operation. Just for testing.')
 async def noop(source):
-    for entry in source:
+    async for entry in source:
         yield entry
 
 @arg_help('Filter out values that are not truthy')
