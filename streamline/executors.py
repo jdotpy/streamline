@@ -219,6 +219,7 @@ class SSHExecHandler(BaseAsyncSSHHandler):
 
     def initialize(self):
         self.vars = parse_vars(self.options.get('var', []))
+        self.command_args = self.options.get('command', None)
         self.script_source = self.options['script']
         self.script_target = '~/{}.script'.format(uuid.uuid4())
 
@@ -255,6 +256,10 @@ class SSHExecHandler(BaseAsyncSSHHandler):
             help='Environment variables to set for the session (e.g. KEY=VALUE or KEY to pass from current env)'
         )
         parser.add_argument(
+            '--command',
+            help='Extra command args to add to invocation of script'
+        )
+        parser.add_argument(
             '--stream-output',
             help='Where to stream output to (default is to return stdout)'
         )
@@ -273,6 +278,8 @@ class SSHExecHandler(BaseAsyncSSHHandler):
             command = 'sudo -H -u {} {}'.format(self.as_user, command)
         if self.vars:
             command = '{} {}'.format(format_env_vars(self.vars), command)
+        if self.command_args:
+            command = '{} {}'.format(command, self.command_args)
         
         stream_target = self.options.get('stream_output', None)
         stream_append = self.options.get('stream_append', False)
