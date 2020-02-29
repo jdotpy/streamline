@@ -201,7 +201,6 @@ class AsyncExecutor():
         self.entry_count = 0
         self.complete_count = 0
         self.active_count = 0
-        self.all_enqueued = False
         self.loop = loop or asyncio.get_event_loop()
 
     def _save_result(self, entry):
@@ -210,43 +209,52 @@ class AsyncExecutor():
 
     async def stream(self, source):
         self.source = source
-        # Start workers
-        workers = []
-        for i in range(self.worker_count):
-            worker = self.loop.create_task(self._worker())
-            workers.append(worker)
-
-        all_workers = asyncio.gather(*workers)
-        asyncio.ensure_future(all_workers)
+        all_read = False
+        pending = 0
+        next_input = None
+        next_output = None
+        
         while True:
-            if all_workers.done() and self.output_queue.qsize() == 0:
+            # Break condition
+            if all_read and pending == 0:
                 break
-            try:
-                entry = await asyncio.wait_for(self.output_queue.get(), timeout=.1)
-            except asyncio.TimeoutError:
-                continue
-            self.output_queue.task_done()
-            yield entry
 
-    async def _worker(self):
-        while True:
-            try:
-                entry = await self.source.__anext__()
-            except StopAsyncIteration:
-                return
-            self.entry_count += 1
-            self.active_count += 1
-            try:
-                if asyncio.iscoroutinefunction(self.executor):
-                    entry.value = await self.executor(entry.value)
-                else:
-                    def executor_wrapper():
-                        return self.executor(entry.value)
-                    entry.value = await self.loop.run_in_executor(None, executor_wrapper)
-            except Exception as e:
-                entry.error(e)
-            self._save_result(entry)
-            self.active_count -= 1
+            if not next_input and not all_read and pending < self.worker_count:
+                next_input = asyncio.create_task(self.source.__anext__())
+
+            if not next_output:
+                next_output = asyncio.create_task(self.output_queue.get())
+
+            awaitables = [aw for aw in (next_input, next_output) if aw]
+            tasks_done, tasks_pending = await asyncio.wait(awaitables, return_when=asyncio.FIRST_COMPLETED)
+
+            if next_input in tasks_done:
+                try:
+                    entry = next_input.result()
+                    next_input = None
+                    entry_future = asyncio.create_task(self.handle(entry))
+                    pending += 1
+                except StopAsyncIteration:
+                    all_read = True
+
+            if next_output in tasks_done:
+                pending -= 1
+                yield next_output.result()
+                self.output_queue.task_done()
+                next_output = None
+
+    async def handle(self, entry):
+        try:
+            if asyncio.iscoroutinefunction(self.executor):
+                entry.value = await self.executor(entry.value)
+            else:
+                def executor_wrapper():
+                    return self.executor(entry.value)
+                entry.value = await self.loop.run_in_executor(None, executor_wrapper)
+        except Exception as e:
+            entry.error(e)
+        self._save_result(entry)
+        self.active_count -= 1
 
 @arg_help('No operation. Just for testing.')
 async def noop(source):
