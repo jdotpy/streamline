@@ -1,8 +1,9 @@
 import subprocess
 import argparse
 import asyncio
-import uuid
+import base64
 import shlex
+import uuid
 import sys
 import os
 
@@ -304,6 +305,90 @@ class SSHExecHandler(BaseAsyncSSHHandler):
         await conn.run('rm {}'.format(self.script_target))
         return result
 
+@arg_help('Execute a bash script on remote host', example='~/dostuff.sh')
+class SSHBashScript(BaseAsyncSSHHandler):
+    NO_SUDO = object()
+
+    def initialize(self):
+        self.script_source = self.options['script']
+        as_user = self.options.get('as_user', None)
+
+        # Hackery around argparse's "empty" value being None for present arg
+        # while the actual missing arg takes on the default defined in the 
+        # `add_argument` function
+        if as_user == self.NO_SUDO:
+            self.as_user = None
+        elif not as_user:
+            self.as_user = 'root'
+        else:
+            self.as_user = as_user
+
+        if os.path.isfile(self.script_source):
+            with open(self.script_source, 'r') as f:
+                self.script = f.read()
+        else:
+            self.script = self.script_source
+        self.script = base64.b64encode(self.script.encode('utf-8')).decode('utf-8')
+        user_spec = ''
+        if self.as_user:
+            user_spec = 'sudo -H -u {} '.format(self.as_user)
+            
+        self.command = 'printf "{}" | base64 -d | {}bash'.format(self.script, user_spec)
+
+
+    @classmethod
+    def args(cls, parser):
+        parser.add_argument(
+            'script',
+            nargs='?',
+            help='Script to run'
+        )
+        parser.add_argument(
+            '--sudo',
+            nargs='?',
+            default=cls.NO_SUDO,
+            dest='as_user',
+            help='Sudo as user'
+        )
+        parser.add_argument(
+            '--var',
+            action='append',
+            dest='var',
+            help='Environment variables to set for the session (e.g. KEY=VALUE or KEY to pass from current env)'
+        )
+        parser.add_argument(
+            '--stream-output',
+            help='Where to stream output to (default is to return stdout)'
+        )
+        parser.add_argument(
+            '--stream-append',
+            default=False,
+            action='store_true',
+            help='Append to streaming output instead of overwriting'
+        )
+
+    async def handle_connection(self, conn, value):
+        stream_target = self.options.get('stream_output', None)
+        stream_append = self.options.get('stream_append', False)
+        if stream_target:
+            out_file = os.path.expanduser(stream_target).replace('{value}', value)
+            process = await stream_ssh_command(conn, self.command, out_file, append=stream_append)
+            result = {
+                'host': value,
+                'exit_code': process.exit_status,
+                'success': process.exit_status == 0,
+            }
+        else:
+            response = await conn.run(self.command)
+            result = {
+                'host': value,
+                'exit_code': response.exit_status,
+                'success': response.exit_status == 0,
+                'stdout': response.stdout,
+                'stderr': response.stderr,
+            }
+        return result
+
 @arg_help('Use a template to execute an HTTP request for each value', example='"https://{value}/"')
 class HTTPHandler():
     async_handler = True
@@ -402,6 +487,7 @@ class SleepHandler():
 EXECUTORS = {
     'http': HTTPHandler,
     'ssh': SSHHandler,
+    'ssh_bash': SSHBashScript,
     'ssh_exec': SSHExecHandler,
     'shell': ShellHandler,
     'scp': ScpHandler,

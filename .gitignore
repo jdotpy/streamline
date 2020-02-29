@@ -9,6 +9,7 @@ __pycache__/
 .Python
 env/
 .env/
+.env-38/
 build/
 develop-eggs/
 dist/
