@@ -75,7 +75,11 @@ class BaseAsyncSSHHandler():
         pass
 
     async def handle(self, value):
-        async with asyncssh.connect(value.strip(), **self.connection_options) as conn:
+        connection_options = dict(self.connection_options)
+        username = self.options.get('username', None)
+        if username:
+            connection_options['username'] = username
+        async with asyncssh.connect(value.strip(), **connection_options) as conn:
             return await self.handle_connection(conn, value)
 
 @arg_help('Treat each value as a host to connect to. Copy a file to or from this host', example='"/tmp/file.txt" "{value}:/tmp/file.txt"')
@@ -179,6 +183,10 @@ class SSHHandler(BaseAsyncSSHHandler):
             help='Where to stream output to (default is to return stdout)'
         )
         parser.add_argument(
+            '--username',
+            help='Username for SSH connection',
+        )
+        parser.add_argument(
             '--stream-append',
             default=False,
             action='store_true',
@@ -249,6 +257,10 @@ class SSHExecHandler(BaseAsyncSSHHandler):
             default=cls.NO_SUDO,
             dest='as_user',
             help='Sudo as user'
+        )
+        parser.add_argument(
+            '--username',
+            help='Username for SSH connection',
         )
         parser.add_argument(
             '--var',
@@ -349,6 +361,10 @@ class SSHBashScript(BaseAsyncSSHHandler):
             default=cls.NO_SUDO,
             dest='as_user',
             help='Sudo as user'
+        )
+        parser.add_argument(
+            '--username',
+            help='Username for SSH connection',
         )
         parser.add_argument(
             '--var',
