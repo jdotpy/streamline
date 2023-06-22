@@ -9,6 +9,7 @@ import os
 
 from .utils import import_obj, inject_module, arg_help
 
+SSH_CONNECTION_TIMEOUT = int(os.environ.get('STREAMLINE_SSH_CONNECTION_TIMEOUT', 10))
 
 def _silence_urllib_warnings():
     import urllib3
@@ -59,6 +60,7 @@ class BaseAsyncSSHHandler():
         'known_hosts': None,
         'keepalive_interval': 30,
         'keepalive_count_max': sys.maxsize,
+        'connect_timeout': SSH_CONNECTION_TIMEOUT,
     }
 
     def __init__(self, **options):
