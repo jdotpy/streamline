@@ -281,8 +281,11 @@ def streamline_command(args):
 
     # Loop until complete
     loop = asyncio.get_event_loop()
-    task = asyncio.ensure_future(future, loop=loop)
-    loop.run_until_complete(task)
+    try:
+        task = asyncio.ensure_future(future, loop=loop)
+        loop.run_until_complete(task)
+    finally:
+        loop.close()
 
 def load_streamer(path, options_processor=None, options=None, print_help=False, ae_args=None):
     kwargs = {}
