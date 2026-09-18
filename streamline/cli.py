@@ -278,11 +278,7 @@ def streamline_command(args):
         command_streamers = [progress.streamer_start, *command_streamers, progress.streamer_end]
 
     future = pipe(generator.stream(), command_streamers, consumer=consumer.stream)
-
-    # Loop until complete
-    loop = asyncio.get_event_loop()
-    task = asyncio.ensure_future(future, loop=loop)
-    loop.run_until_complete(task)
+    asyncio.run(future)
 
 def load_streamer(path, options_processor=None, options=None, print_help=False, ae_args=None):
     kwargs = {}
