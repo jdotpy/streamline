@@ -318,3 +318,9 @@ def load_streamer(path, options_processor=None, options=None, print_help=False, 
         if type(Streamer) == type:
             return Streamer(**kwargs).stream
         return Streamer
+
+
+def main():
+    """Target entry point for standard pyproject.toml scripts."""
+    args = sys.argv[1:]
+    streamline_command(args)

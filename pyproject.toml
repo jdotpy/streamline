@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "streamline"
+version = "1.2.0"
+description = "CLI tool for doing async tasks and transformations"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "KJ", email = "jdotpy@users.noreply.github.com" }
+]
+keywords = ["tools"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "pyyaml",
+    "requests",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/jdotpy/streamline"
+Download = "https://github.com/jdotpy/streamline/tarball/master"
+
+[project.scripts]
+streamline = "streamline.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["streamline"]

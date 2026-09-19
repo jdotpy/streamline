@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from operator import itemgetter
 import traceback
-import argparse
+import inspect
 import asyncio
 import math
 import json
@@ -201,7 +201,15 @@ class AsyncExecutor():
         self.entry_count = 0
         self.complete_count = 0
         self.active_count = 0
-        self.loop = loop or asyncio.get_event_loop()
+
+    @property
+    def loop(self):
+        if self._loop is None:
+            try:
+                self._loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self._loop = asyncio.get_event_loop_policy().get_event_loop()
+        return self._loop
 
     def _save_result(self, entry):
         self.complete_count += 1
@@ -232,7 +240,8 @@ class AsyncExecutor():
                 try:
                     entry = next_input.result()
                     next_input = None
-                    entry_future = asyncio.create_task(self.handle(entry))
+                    # Create handle task explicitly inside active stream coroutine
+                    asyncio.create_task(self.handle(entry))
                     pending += 1
                 except StopAsyncIteration:
                     all_read = True
@@ -245,12 +254,14 @@ class AsyncExecutor():
 
     async def handle(self, entry):
         try:
-            if asyncio.iscoroutinefunction(self.executor):
+            if inspect.iscoroutinefunction(self.executor):
                 entry.value = await self.executor(entry.value)
             else:
                 def executor_wrapper():
                     return self.executor(entry.value)
-                entry.value = await self.loop.run_in_executor(None, executor_wrapper)
+                # Ensure running loop is obtained dynamically
+                running_loop = asyncio.get_running_loop()
+                entry.value = await running_loop.run_in_executor(None, executor_wrapper)
         except Exception as e:
             entry.error(e)
         self._save_result(entry)

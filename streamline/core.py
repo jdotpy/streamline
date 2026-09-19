@@ -41,7 +41,5 @@ async def pipe(generator, streamers, consumer=None):
     await consumer(pipe)
 
 def sync_exec(future):
-    loop = asyncio.get_event_loop()
-    task = asyncio.ensure_future(future, loop=loop)
-    result = loop.run_until_complete(task)
+    result = asyncio.run(future)
     return result
