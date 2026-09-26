@@ -9,6 +9,8 @@ __pycache__/
 .Python
 env/
 .env/
+.test-venv/
+.venv/
 .env-38/
 build/
 develop-eggs/
