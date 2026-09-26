@@ -10,10 +10,12 @@ import os
 from .utils import import_obj, inject_module, arg_help
 
 SSH_CONNECTION_TIMEOUT = int(os.environ.get('STREAMLINE_SSH_CONNECTION_TIMEOUT', 10))
+SSH_CERT_FILE = os.environ.get('STREAMLINE_SSH_CERT', None)
 
 def _silence_urllib_warnings():
     import urllib3
     urllib3.disable_warnings()
+
 
 def parse_vars(args):
     env_vars = {}
@@ -53,36 +55,144 @@ async def stream_ssh_command(conn, command, output_target, append=False):
             out_file_fd.close()
     return process
 
-
-class BaseAsyncSSHHandler():
+class BaseAsyncSSHHandler:
     async_handler = True
     connection_options = {
         'known_hosts': None,
         'keepalive_interval': 30,
         'keepalive_count_max': sys.maxsize,
-        'connect_timeout': SSH_CONNECTION_TIMEOUT,
+        'connect_timeout': float(os.getenv('SSH_CONNECTION_TIMEOUT', SSH_CONNECTION_TIMEOUT)),
     }
+    _connect_semaphore = asyncio.Semaphore(20)
 
     def __init__(self, **options):
         inject_module('asyncssh', globals())
         if not hasattr(asyncssh.connection, '_DEFAULT_KEEPALIVE_INTERVAL'):
-            print('asyncssh>1.16 required')
+            print('asyncssh > 1.16 required')
             sys.exit(10)
         self.options = options
-
-        # Hook for other things
         self.initialize()
 
     def initialize(self):
         pass
 
+    async def _get_agent_key_with_cert(self, cert_path):
+        """Pair an on-disk certificate with its matching key loaded from ssh-agent"""
+        cert_path = os.path.expanduser(cert_path)
+        if not os.path.exists(cert_path):
+            return None
+
+        try:
+            cert = asyncssh.read_certificate(cert_path)
+        except Exception:
+            return None
+
+        try:
+            async with asyncssh.connect_agent() as agent:
+                agent_keys = await agent.get_keys()
+                for key_pair in agent_keys:
+                    try:
+                        key_pair.set_certificate(cert)
+                        return [key_pair]
+                    except ValueError:
+                        continue
+        except Exception:
+            return None
+        return None
+
+    async def resolve_username(self):
+        """Resolve username from options or environment variables"""
+        return (
+            self.options.get('username')
+            or os.getenv('SSH_USERNAME')
+            or os.getenv('USER')
+            or None
+        )
+    
+    async def resolve_client_keys(self):
+        """
+        Resolve client keys and certificates, prioritizing explicit user input 
+        from options or environment variables before falling back to agent pairing.
+        """
+        # 1. Resolve client keys (options -> env var)
+        client_keys = self.options.get('client_keys')
+        if not client_keys and os.getenv('SSH_CLIENT_KEY'):
+            client_keys = [os.getenv('SSH_CLIENT_KEY')]
+
+        # 2. Resolve certificate paths (options -> env var -> global default)
+        cert_paths = self.options.get('client_certs')
+        if not cert_paths and os.getenv('SSH_CLIENT_CERT'):
+            cert_paths = [os.getenv('SSH_CLIENT_CERT')]
+        
+        cert_path = cert_paths[0] if cert_paths else globals().get('SSH_CERT_FILE')
+        agent_path = self.options.get('agent_path', os.getenv('SSH_AUTH_SOCK'))
+
+        # Scenario A: User provided both an explicit private key AND a certificate path
+        if client_keys and cert_path:
+            expanded_key_path = os.path.expanduser(client_keys[0])
+            expanded_cert_path = os.path.expanduser(cert_path)
+            
+            if os.path.exists(expanded_key_path) and os.path.exists(expanded_cert_path):
+                try:
+                    # Load the private key directly from disk and bind the certificate
+                    key = asyncssh.read_private_key(expanded_key_path)
+                    cert = asyncssh.read_certificate(expanded_cert_path)
+                    key.set_certificate(cert)
+                    return [key], agent_path
+                except Exception:
+                    # Fallback to returning the raw path if parsing/binding fails
+                    pass
+            
+            return [expanded_key_path], agent_path
+
+        # Scenario B: User provided an explicit private key, but NO certificate
+        if client_keys:
+            expanded_keys = [os.path.expanduser(k) for k in client_keys]
+            return expanded_keys, agent_path
+
+        # Scenario C: NO explicit key provided, but a certificate path IS provided 
+        # -> Look inside the ssh-agent to find the matching key pair
+        if cert_path:
+            paired_keys = await self._get_agent_key_with_cert(cert_path)
+            if paired_keys:
+                return paired_keys, None  # Skip agent path since we resolved it manually
+
+        # Scenario D: Fallback to default behavior
+        return None, agent_path
+
+    async def _resolve_credentials_middleware(self):
+        """
+        Middleware that calls the resolution methods once and caches the results 
+        for the lifetime of the handler instance.
+        """
+        if hasattr(self, '_cached_credentials'):
+            return self._cached_credentials
+
+        username = await self.resolve_username()
+        client_keys, agent_path = await self.resolve_client_keys()
+
+        self._cached_credentials = (username, client_keys, agent_path)
+        return self._cached_credentials
+
     async def handle(self, value):
         connection_options = dict(self.connection_options)
-        username = self.options.get('username', None)
+        username, client_keys, agent_path = await self._resolve_credentials_middleware()
         if username:
             connection_options['username'] = username
-        async with asyncssh.connect(value.strip(), **connection_options) as conn:
+        if client_keys:
+            connection_options['client_keys'] = client_keys
+        if agent_path is not None:
+            connection_options['agent_path'] = agent_path
+
+        # Throttle the connection/negotiation phase using the semaphore
+        async with self._connect_semaphore:
+            conn = await asyncssh.connect(value.strip(), **connection_options)
+        
+        try:
             return await self.handle_connection(conn, value)
+        finally:
+            conn.close()
+            await conn.wait_closed()
 
 @arg_help('Treat each value as a host to connect to. Copy a file to or from this host', example='"/tmp/file.txt" "{value}:/tmp/file.txt"')
 class ScpHandler(BaseAsyncSSHHandler):
