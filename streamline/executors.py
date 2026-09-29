@@ -1,21 +1,96 @@
 import subprocess
 import argparse
 import asyncio
+import inspect
 import base64
 import shlex
 import uuid
 import sys
+import logging
 import os
 
 from .utils import import_obj, inject_module, arg_help
 
+logger = logging.getLogger(__name__)
+
 SSH_CONNECTION_TIMEOUT = int(os.environ.get('STREAMLINE_SSH_CONNECTION_TIMEOUT', 10))
 SSH_CERT_FILE = os.environ.get('STREAMLINE_SSH_CERT', None)
+SSH_DEBUG_LOGGING = bool(os.environ.get('STREAMLINE_SSH_DEBUG)'))
 
 def _silence_urllib_warnings():
     import urllib3
     urllib3.disable_warnings()
 
+if SSH_DEBUG_LOGGING:
+    logging.basicConfig(level=logging.DEBUG)
+    import asyncssh
+    asyncssh.set_debug_level(int(os.environ.get('STREAMLINE_SSH_DEBUG', '2')))
+
+def _inject_patches():
+    original_pubkeyauthrequested = asyncssh.connection.SSHClientConnection.public_key_auth_requested
+    try:
+        from asyncssh.public_key import load_keypairs
+        from asyncssh.pkcs11 import load_pkcs11_keys
+    except ImportError:
+        return
+
+    # Apply only to relevant versions
+    if not asyncssh.__version__ or not asyncssh.__version__.startswith('2.'):
+        return
+    version = asyncssh.__version__.split('.')
+    if int(version[1]) <= 10 or int(version[1]) > 24:
+        return 
+
+    async def _patched_public_key_auth_requested(self):
+        """
+            patched: check _saved_rsa_key before empty _client_keys bailout. 
+
+            Falls back to the original method if the asyncssh version doesn't
+            have the _saved_rsa_key attribute (older versions without the bug)
+        """
+        if not hasattr(self, '_saved_rsa_key'):
+            return await original_pubkeyauthrequested(self)
+
+        if not self._public_key_auth:
+            return None
+
+        if self._get_agent_keys:
+            try:
+                agent_keys = await self._agent.get_keys(self._agent_identities)
+                self._client_keys[:0] = list(agent_keys)
+            except ValueError:
+                pass
+            self._get_agent_keys = False
+
+        if self._get_pkcs11_keys:
+            pkcs11_keys = await self._loop.run_in_executor(
+                None, load_pkcs11_keys, self._pkcs11_provider, self._pkcs11_pin
+            )
+            self._client_keys[:0] = list(pkcs11_keys)
+            self._get_pkcs11_keys = False
+
+        while True:
+            # check _saved_rsa_key first 
+            if self._saved_rsa_key:
+                key = self._saved_rsa_key
+                key.algorithm = key.sig_algorithm + b'-cert-v01@openssh.com'
+                self._saved_rsa_key = None
+            elif not self._client_keys:
+                result = self._owner.public_key_auth_requested()
+                if inspect.isawaitable(result):
+                    result = await result
+                if not result:
+                    return None
+                self._client_keys = list(load_keypairs(result))
+                continue
+            else:
+                key = self._client_keys.pop(0)
+
+            if self._choose_signature_alg(key):
+                if key.algorithm == b'ssh-rsa-cert-v01@openssh.com' and key.sig_algorithm != b'ssh-rsa':
+                    self._saved_rsa_key = key
+                return key
+    asyncssh.connection.SSHClientConnection.public_key_auth_requested = _patched_public_key_auth_requested
 
 def parse_vars(args):
     env_vars = {}
@@ -67,6 +142,7 @@ class BaseAsyncSSHHandler:
 
     def __init__(self, **options):
         inject_module('asyncssh', globals())
+        _inject_patches()
         if not hasattr(asyncssh.connection, '_DEFAULT_KEEPALIVE_INTERVAL'):
             print('asyncssh > 1.16 required')
             sys.exit(10)
