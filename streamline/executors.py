@@ -187,8 +187,9 @@ class BaseAsyncSSHHandler:
     
     async def resolve_client_keys(self):
         """
-        Resolve client keys and certificates, prioritizing explicit user input 
-        from options or environment variables before falling back to agent pairing.
+        Resolve all available client keys and agent paths normally, and if a 
+        certificate is specified, apply it to any matching key object without 
+        restricting overall key availability.
         """
         # 1. Resolve client keys (options -> env var)
         client_keys = self.options.get('client_keys')
@@ -203,38 +204,59 @@ class BaseAsyncSSHHandler:
         cert_path = cert_paths[0] if cert_paths else globals().get('SSH_CERT_FILE')
         agent_path = self.options.get('agent_path', os.getenv('SSH_AUTH_SOCK'))
 
-        # Scenario A: User provided both an explicit private key AND a certificate path
-        if client_keys and cert_path:
-            expanded_key_path = os.path.expanduser(client_keys[0])
-            expanded_cert_path = os.path.expanduser(cert_path)
-            
-            if os.path.exists(expanded_key_path) and os.path.exists(expanded_cert_path):
-                try:
-                    # Load the private key directly from disk and bind the certificate
-                    key = asyncssh.read_private_key(expanded_key_path)
-                    cert = asyncssh.read_certificate(expanded_cert_path)
-                    key.set_certificate(cert)
-                    return [key], agent_path
-                except Exception:
-                    # Fallback to returning the raw path if parsing/binding fails
-                    pass
-            
-            return [expanded_key_path], agent_path
-
-        # Scenario B: User provided an explicit private key, but NO certificate
-        if client_keys:
-            expanded_keys = [os.path.expanduser(k) for k in client_keys]
+        # If no certificate is specified at all, just return keys/paths normally
+        if not cert_path:
+            expanded_keys = [os.path.expanduser(k) for k in client_keys] if client_keys else None
             return expanded_keys, agent_path
 
-        # Scenario C: NO explicit key provided, but a certificate path IS provided 
-        # -> Look inside the ssh-agent to find the matching key pair
-        if cert_path:
-            paired_keys = await self._get_agent_key_with_cert(cert_path)
-            if paired_keys:
-                return paired_keys, None  # Skip agent path since we resolved it manually
+        expanded_cert_path = os.path.expanduser(cert_path)
+        if not os.path.exists(expanded_cert_path):
+            # Cert path specified but doesn't exist, fallback to normal keys
+            expanded_keys = [os.path.expanduser(k) for k in client_keys] if client_keys else None
+            return expanded_keys, agent_path
 
-        # Scenario D: Fallback to default behavior
-        return None, agent_path
+        try:
+            cert = asyncssh.read_certificate(expanded_cert_path)
+        except Exception:
+            expanded_keys = [os.path.expanduser(k) for k in client_keys] if client_keys else None
+            return expanded_keys, agent_path
+
+        resolved_keys = []
+
+        # Load explicit client keys from disk, trying to attach the cert if it fits
+        if client_keys:
+            for k_path in client_keys:
+                expanded_k_path = os.path.expanduser(k_path)
+                if os.path.exists(expanded_k_path):
+                    try:
+                        key = asyncssh.read_private_key(expanded_k_path)
+                        try:
+                            # Try binding the cert; if it matches this key, it succeeds
+                            key.set_certificate(cert)
+                        except ValueError:
+                            # Not a match for this particular key, which is fine—keep key uncertified
+                            pass
+                        resolved_keys.append(key)
+                    except Exception:
+                        # Fallback to path if reading fails
+                        resolved_keys.append(expanded_k_path)
+
+        # Also pull keys from the agent and see if the cert matches any of them
+        try:
+            async with asyncssh.connect_agent() as agent:
+                agent_keys = await agent.get_keys()
+                for key_pair in agent_keys:
+                    try:
+                        # Try binding the cert to agent keys too
+                        key_pair.set_certificate(cert)
+                    except ValueError:
+                        pass # Doesn't match, use agent key as-is
+                    resolved_keys.append(key_pair)
+        except Exception:
+            pass
+
+        # Return whatever resolved/certified keys we gathered, plus agent path
+        return resolved_keys if resolved_keys else None, agent_path
 
     async def _resolve_credentials_middleware(self):
         """
